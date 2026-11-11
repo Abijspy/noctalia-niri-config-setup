@@ -29,7 +29,8 @@ set -euo pipefail
 REPO_RAW="https://raw.githubusercontent.com/Abijspy/noctalia-niri-config-setup/main"
 GREETD_CONF="/etc/greetd/config.toml"
 LOG="/tmp/noctalia-niri-install.log"
-BT="niri + Noctalia v5 installer"
+BT="niri + Noctalia v5 installer      ↑/↓ move · Enter continue · Esc quit"
+INSTALL_STARTED=0
 
 # ---------- defaults ----------
 ASSUME_YES=0
@@ -159,7 +160,11 @@ roottext=magenta,black
 }
 
 # whiptail draws on the TTY; its answer comes back on stdout of $( ).
-wt() { whiptail --backtitle "$BT" "$@" 2>&1 >/dev/tty </dev/tty; }
+# Buttons: Enter = Continue, Esc (or the Quit button) = exit the installer.
+wt() {
+    whiptail --backtitle "$BT" --ok-button "Continue" --cancel-button "Quit" \
+        "$@" 2>&1 >/dev/tty </dev/tty
+}
 
 cancelled() {
     [[ $UI == tui ]] && clear >/dev/tty
@@ -176,25 +181,30 @@ box_height() {  # box_height "text" -> rows that fit the text, capped to the scr
     echo "$h"
 }
 
-msg() {  # msg title text
+msg() {  # msg title text   (Enter continues; Esc quits before install starts)
     if [[ $UI == tui ]]; then
-        local h scroll=() n; h="$(box_height "$2")"
+        local h scroll=() n rc=0; h="$(box_height "$2")"
         n=$(printf '%s\n' "$2" | wc -l)
         # Only scroll if the text truly can't fit (scroll mode makes Enter scroll, not OK).
         (( n + 7 > TERM_LINES - 2 )) && scroll=(--scrolltext)
-        whiptail --backtitle "$BT" --title "$1" "${scroll[@]}" --msgbox "$2" "$h" 76 >/dev/tty </dev/tty 2>&1 || true
+        whiptail --backtitle "$BT" --title "$1" --ok-button "Continue" "${scroll[@]}" \
+            --msgbox "$2" "$h" 76 >/dev/tty </dev/tty 2>&1 || rc=$?
+        if [[ $rc -eq 255 && $INSTALL_STARTED -eq 0 ]]; then cancelled; fi
     else
         printf '\n%s\n%s\n\n' "$1" "$2"
     fi
+    return 0
 }
 
-ask() {  # ask "question" default(y/n) [title]
+ask() {  # ask "question" default(y/n) [title]  (←/→ pick Yes/No, Enter confirms, Esc quits)
     local q="$1" def="${2:-y}" title="${3:-Confirm}" reply
     [[ $ASSUME_YES -eq 1 ]] && { [[ $def == y ]]; return; }
     if [[ $UI == tui ]]; then
-        local extra=(); [[ $def == n ]] && extra=(--defaultno)
-        whiptail --backtitle "$BT" --title "$title" "${extra[@]}" --yesno "$q" "$(box_height "$q")" 76 >/dev/tty </dev/tty 2>&1
-        return
+        local extra=() rc=0; [[ $def == n ]] && extra=(--defaultno)
+        whiptail --backtitle "$BT" --title "$title" "${extra[@]}" \
+            --yesno "$q" "$(box_height "$q")" 76 >/dev/tty </dev/tty 2>&1 || rc=$?
+        if [[ $rc -eq 255 && $INSTALL_STARTED -eq 0 ]]; then cancelled; fi
+        return "$rc"
     fi
     [[ $def == y ]] && q+=" [Y/n] " || q+=" [y/N] "
     read -r -p "$q" reply </dev/tty || reply=""
@@ -202,13 +212,15 @@ ask() {  # ask "question" default(y/n) [title]
     [[ $reply =~ ^[Yy] ]]
 }
 
-radio() {  # radio title text current tag desc [tag desc ...]  -> echoes tag
+# Single choice: a menu, so ↑/↓ highlights and Enter picks the highlighted
+# item (a radiolist would need Space first, and Enter would keep the old pick).
+choose() {  # choose title text current tag desc [tag desc ...]  -> echoes tag
     local title="$1" text="$2" cur="$3"; shift 3
-    local items=() n=0
-    while (( $# )); do
-        items+=("$1" "$2" "$([[ $1 == "$cur" ]] && echo ON || echo OFF)"); shift 2; n=$((n+1))
-    done
-    wt --title "$title" --radiolist "$text\n\nUse ↑/↓, Space to select, Enter to confirm." 18 76 "$n" "${items[@]}" || cancelled
+    local n=$(( $# / 2 ))
+    wt --title "$title" --default-item "$cur" \
+        --menu "$text\n\n↑/↓ to move, Enter to continue, Esc to quit." 18 76 "$n" "$@"
+    # No `cancelled` here: this runs inside $( ), where exit only ends the
+    # subshell. Callers do:  VAR="$(choose ...)" || cancelled
 }
 
 # ---------- decisions ----------
@@ -280,7 +292,7 @@ Enter = continue, Esc = quit."
     [[ $IS_LAPTOP -eq 1 ]] && items+=(lid "Lock screen before suspend on lid close" "$([[ $LID_FIX -eq 1 ]] && echo ON || echo OFF)")
     local sel
     sel="$(wt --title "Components" --separate-output --checklist \
-        "niri, Noctalia, portals, audio and fonts are always installed.\nChoose the extras (Space toggles, Enter confirms):" \
+        "niri, Noctalia, portals, audio and fonts are always installed.\n↑/↓ move · Space toggles · Enter continue · Esc quit" \
         18 76 6 "${items[@]}")" || cancelled
     INSTALL_APPS=0; INSTALL_GREETER=0; TYPE_TO_LAUNCH=0; POLKIT_AGENT=0; LID_FIX=0
     while read -r s; do
@@ -291,22 +303,22 @@ Enter = continue, Esc = quit."
     done <<< "$sel"
 
     if [[ $INSTALL_APPS -eq 1 ]]; then
-        TERM_APP="$(radio "Terminal" "Terminal for Mod+Return:" "$TERM_APP" \
+        TERM_APP="$(choose "Terminal" "Terminal for Mod+Return:" "$TERM_APP" \
             alacritty "Alacritty — fast, GPU accelerated" \
             kitty     "Kitty — GPU, tabs, images" \
             foot      "Foot — tiny, Wayland-native" \
             ghostty   "Ghostty — modern, GPU" \
-            wezterm   "WezTerm — GPU, multiplexer")"
-        FM_APP="$(radio "File manager" "File manager for Mod+E:" "$FM_APP" \
+            wezterm   "WezTerm — GPU, multiplexer")" || cancelled
+        FM_APP="$(choose "File manager" "File manager for Mod+E:" "$FM_APP" \
             nautilus "Nautilus (GNOME Files)" \
             thunar   "Thunar (Xfce, lightweight)" \
             dolphin  "Dolphin (KDE)" \
             nemo     "Nemo (Cinnamon)" \
-            none     "None — leave Mod+E unbound")"
-        BROWSER_APP="$(radio "Browser" "Web browser for Mod+B:" "$BROWSER_APP" \
+            none     "None — leave Mod+E unbound")" || cancelled
+        BROWSER_APP="$(choose "Browser" "Web browser for Mod+B:" "$BROWSER_APP" \
             firefox  "Firefox" \
             chromium "Chromium" \
-            none     "None — leave Mod+B unbound")"
+            none     "None — leave Mod+B unbound")" || cancelled
     fi
 
     while true; do
@@ -595,6 +607,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo
 
 init_ui
 if [[ $UI == tui ]]; then tui_decisions; else plain_decisions; fi
+
+INSTALL_STARTED=1
 
 # In the TUI, sudo must never prompt (it would be hidden behind the gauge).
 [[ $UI == tui && $IS_ROOT -eq 0 ]] && SUDO=(sudo -n)

@@ -22,6 +22,16 @@ cd noctalia-niri-config-setup
 
 The installer opens full-screen menus (whiptail). It installs `libnewt` (the package that provides whiptail) automatically if it's missing, and the menus fit a standard 80×24 console.
 
+**Controls**
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Move between options |
+| `Enter` | Continue (picks the highlighted option) |
+| `Space` | Toggle an item on the Components screen |
+| `←` / `→` or `Tab` | Switch buttons (Yes / No, Continue / Quit) |
+| `Esc` | Quit the installer. Nothing is changed before you confirm the Summary screen |
+
 1. **Welcome:** shows whether it found a laptop and an existing login manager.
 2. **User:** only when run as root. Pick an existing user or create a new one. A new user is added to `wheel`, and `sudo` is installed and enabled for that group.
 3. **Components:** apps, Noctalia Greeter, overview type-to-launch, Noctalia's polkit agent, and the lid-close lock (laptops only).
