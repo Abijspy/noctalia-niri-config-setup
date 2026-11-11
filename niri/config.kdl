@@ -1,0 +1,337 @@
+// =====================================================================
+//  niri + Noctalia v5 — ~/.config/niri/config.kdl
+//  Noctalia v5 is the native C++ shell launched as `noctalia` and
+//  controlled with `noctalia msg ...` (NOT the v4 `qs -c noctalia-shell`).
+//  Validate after editing:  niri validate
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// Input
+// ---------------------------------------------------------------------
+input {
+    keyboard {
+        xkb {
+            layout "us"
+            // options "caps:escape"
+        }
+        repeat-delay 300
+        repeat-rate 40
+        numlock
+    }
+
+    touchpad {
+        tap
+        natural-scroll
+        dwt
+        accel-profile "adaptive"
+    }
+
+    mouse {
+        accel-profile "flat"
+    }
+
+    focus-follows-mouse max-scroll-amount="0%"
+    warp-mouse-to-focus
+}
+
+// ---------------------------------------------------------------------
+// Outputs — run `niri msg outputs` to get your names/modes
+// ---------------------------------------------------------------------
+// output "eDP-1" {
+//     mode "1920x1080@60.000"
+//     scale 1.0
+//     position x=0 y=0
+// }
+
+// ---------------------------------------------------------------------
+// Layout
+// ---------------------------------------------------------------------
+layout {
+    gaps 12
+    center-focused-column "never"
+
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+    }
+    default-column-width { proportion 0.5; }
+
+    focus-ring {
+        width 2
+        active-color "#c4a7e7"
+        inactive-color "#26233a"
+    }
+
+    border {
+        off
+    }
+
+    shadow {
+        on
+        softness 30
+        spread 5
+        offset x=0 y=5
+        color "#0007"
+    }
+}
+
+// ---------------------------------------------------------------------
+// Overview
+// ---------------------------------------------------------------------
+overview {
+    workspace-shadow {
+        off
+    }
+}
+
+// ---------------------------------------------------------------------
+// Startup
+// ---------------------------------------------------------------------
+// Start Noctalia from the compositor (systemd startup is deprecated).
+spawn-at-startup "noctalia"
+spawn-at-startup "xwayland-satellite"
+
+environment {
+    QT_QPA_PLATFORM "wayland"
+    ELECTRON_OZONE_PLATFORM_HINT "auto"
+}
+
+prefer-no-csd
+screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
+
+hotkey-overlay {
+    skip-at-startup
+}
+
+// ---------------------------------------------------------------------
+// Window rules
+// ---------------------------------------------------------------------
+window-rule {
+    // Rounded corners to match Noctalia's look.
+    geometry-corner-radius 20
+    clip-to-geometry true
+}
+
+// Floating Noctalia settings window.
+window-rule {
+    match app-id="dev.noctalia.Noctalia"
+    open-floating true
+    default-column-width { fixed 1080; }
+    default-window-height { fixed 920; }
+}
+
+window-rule {
+    match app-id=r#"firefox$"# title="^Picture-in-Picture$"
+    open-floating true
+}
+
+window-rule {
+    match app-id=r#"^org\.gnome\.Calculator$"#
+    match app-id=r#"^pavucontrol$"#
+    match app-id=r#"^nm-connection-editor$"#
+    open-floating true
+}
+
+// ---------------------------------------------------------------------
+// Overview: blurred wallpaper
+// Noctalia's backdrop layer (a blurred + tinted copy of the wallpaper)
+// is placed inside niri's overview backdrop.
+// ---------------------------------------------------------------------
+layer-rule {
+    match namespace="^noctalia-backdrop"
+    place-within-backdrop true
+}
+
+// ---------------------------------------------------------------------
+// Blur — requires a niri build with background-effect / blur support.
+// Noctalia publishes its blur regions automatically when the
+// ext-background-effects protocol is available.
+// ---------------------------------------------------------------------
+
+// Apps: blur everything, no xray (blurs what's actually behind).
+window-rule {
+    background-effect {
+        blur true
+        xray false
+    }
+}
+
+// Every Noctalia surface: bar, panels, attached panels, launcher,
+// control center, notifications, OSD, dock, window switcher,
+// desktop widgets, lock screen…
+layer-rule {
+    match namespace="^noctalia-"
+    background-effect {
+        blur true
+        xray false
+    }
+}
+
+// …except the wallpaper and overview backdrop themselves
+// (nothing behind them to blur). Later rules override earlier ones.
+layer-rule {
+    match namespace="^noctalia-(wallpaper|backdrop)"
+    background-effect {
+        blur false
+    }
+}
+
+// Global blur tuning.
+blur {
+    passes 3        // more passes = stronger blur
+    offset 3.0      // sample distance per pass
+    noise 0.02      // grain overlay
+    saturation 1.5  // color saturation boost
+}
+
+// ---------------------------------------------------------------------
+// Laptop lid → Noctalia lock + suspend
+// (also set HandleLidSwitch=ignore in /etc/systemd/logind.conf)
+// ---------------------------------------------------------------------
+switch-events {
+    lid-close { spawn "noctalia" "msg" "session" "lock-and-suspend"; }
+}
+
+// ---------------------------------------------------------------------
+// Keybinds
+// ---------------------------------------------------------------------
+binds {
+    Mod+Shift+Slash { show-hotkey-overlay; }
+
+    // ---- Noctalia ----
+    Mod+Space       hotkey-overlay-title="Launcher"        { spawn-sh "noctalia msg panel-toggle launcher"; }
+    Mod+D           hotkey-overlay-title="Launcher"        { spawn-sh "noctalia msg panel-toggle launcher"; }
+    Mod+S           hotkey-overlay-title="Control center"  { spawn-sh "noctalia msg panel-toggle control-center"; }
+    Mod+Shift+Comma hotkey-overlay-title="Noctalia settings" { spawn-sh "noctalia msg settings-toggle"; }
+
+    // Noctalia window switcher (comment these out to use niri's own Alt+Tab).
+    Alt+Tab       { spawn-sh "noctalia msg window-switcher hold"; }
+    Alt+Shift+Tab { spawn-sh "noctalia msg window-switcher hold reverse"; }
+
+    // Volume / brightness via Noctalia (shows its OSD)
+    XF86AudioRaiseVolume  allow-when-locked=true { spawn-sh "noctalia msg volume-up"; }
+    XF86AudioLowerVolume  allow-when-locked=true { spawn-sh "noctalia msg volume-down"; }
+    XF86AudioMute         allow-when-locked=true { spawn-sh "noctalia msg volume-mute"; }
+    XF86MonBrightnessUp   allow-when-locked=true { spawn-sh "noctalia msg brightness-up"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn-sh "noctalia msg brightness-down"; }
+
+    // Media (playerctl)
+    XF86AudioPlay  allow-when-locked=true { spawn "playerctl" "play-pause"; }
+    XF86AudioNext  allow-when-locked=true { spawn "playerctl" "next"; }
+    XF86AudioPrev  allow-when-locked=true { spawn "playerctl" "previous"; }
+    XF86AudioMicMute allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"; }
+
+    // ---- Apps ----
+    Mod+Return hotkey-overlay-title="Terminal"     { spawn "alacritty"; }
+    Mod+E      hotkey-overlay-title="File manager" { spawn "nautilus"; }
+    Mod+B      hotkey-overlay-title="Browser"      { spawn "firefox"; }
+
+    // ---- Windows ----
+    Mod+Q repeat=false { close-window; }
+    Mod+O repeat=false { toggle-overview; }
+
+    Mod+Left  { focus-column-left; }
+    Mod+Down  { focus-window-down; }
+    Mod+Up    { focus-window-up; }
+    Mod+Right { focus-column-right; }
+    Mod+H     { focus-column-left; }
+    Mod+J     { focus-window-down; }
+    Mod+K     { focus-window-up; }
+    Mod+L     { focus-column-right; }
+
+    Mod+Ctrl+Left  { move-column-left; }
+    Mod+Ctrl+Down  { move-window-down; }
+    Mod+Ctrl+Up    { move-window-up; }
+    Mod+Ctrl+Right { move-column-right; }
+    Mod+Ctrl+H     { move-column-left; }
+    Mod+Ctrl+J     { move-window-down; }
+    Mod+Ctrl+K     { move-window-up; }
+    Mod+Ctrl+L     { move-column-right; }
+
+    Mod+Home      { focus-column-first; }
+    Mod+End       { focus-column-last; }
+    Mod+Ctrl+Home { move-column-to-first; }
+    Mod+Ctrl+End  { move-column-to-last; }
+
+    // Monitors
+    Mod+Shift+Left  { focus-monitor-left; }
+    Mod+Shift+Right { focus-monitor-right; }
+    Mod+Shift+Ctrl+Left  { move-column-to-monitor-left; }
+    Mod+Shift+Ctrl+Right { move-column-to-monitor-right; }
+
+    // Workspaces
+    Mod+Page_Down      { focus-workspace-down; }
+    Mod+Page_Up        { focus-workspace-up; }
+    Mod+U              { focus-workspace-down; }
+    Mod+I              { focus-workspace-up; }
+    Mod+Ctrl+Page_Down { move-column-to-workspace-down; }
+    Mod+Ctrl+Page_Up   { move-column-to-workspace-up; }
+    Mod+Ctrl+U         { move-column-to-workspace-down; }
+    Mod+Ctrl+I         { move-column-to-workspace-up; }
+
+    Mod+WheelScrollDown cooldown-ms=150 { focus-workspace-down; }
+    Mod+WheelScrollUp   cooldown-ms=150 { focus-workspace-up; }
+    Mod+WheelScrollRight { focus-column-right; }
+    Mod+WheelScrollLeft  { focus-column-left; }
+
+    Mod+1 { focus-workspace 1; }
+    Mod+2 { focus-workspace 2; }
+    Mod+3 { focus-workspace 3; }
+    Mod+4 { focus-workspace 4; }
+    Mod+5 { focus-workspace 5; }
+    Mod+6 { focus-workspace 6; }
+    Mod+7 { focus-workspace 7; }
+    Mod+8 { focus-workspace 8; }
+    Mod+9 { focus-workspace 9; }
+    Mod+Ctrl+1 { move-column-to-workspace 1; }
+    Mod+Ctrl+2 { move-column-to-workspace 2; }
+    Mod+Ctrl+3 { move-column-to-workspace 3; }
+    Mod+Ctrl+4 { move-column-to-workspace 4; }
+    Mod+Ctrl+5 { move-column-to-workspace 5; }
+    Mod+Ctrl+6 { move-column-to-workspace 6; }
+    Mod+Ctrl+7 { move-column-to-workspace 7; }
+    Mod+Ctrl+8 { move-column-to-workspace 8; }
+    Mod+Ctrl+9 { move-column-to-workspace 9; }
+
+    // Columns & sizing
+    Mod+BracketLeft  { consume-or-expel-window-left; }
+    Mod+BracketRight { consume-or-expel-window-right; }
+    Mod+Comma  { consume-window-into-column; }
+    Mod+Period { expel-window-from-column; }
+
+    Mod+R       { switch-preset-column-width; }
+    Mod+Shift+R { switch-preset-window-height; }
+    Mod+Ctrl+R  { reset-window-height; }
+    Mod+F       { maximize-column; }
+    Mod+Shift+F { fullscreen-window; }
+    Mod+Ctrl+F  { expand-column-to-available-width; }
+    Mod+C       { center-column; }
+
+    Mod+Minus       { set-column-width "-10%"; }
+    Mod+Equal       { set-column-width "+10%"; }
+    Mod+Shift+Minus { set-window-height "-10%"; }
+    Mod+Shift+Equal { set-window-height "+10%"; }
+
+    Mod+V       { toggle-window-floating; }
+    Mod+Shift+V { switch-focus-between-floating-and-tiling; }
+    Mod+W       { toggle-column-tabbed-display; }
+
+    // Screenshots (niri built-in)
+    Print      { screenshot; }
+    Ctrl+Print { screenshot-screen; }
+    Alt+Print  { screenshot-window; }
+
+    // Session
+    Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
+    Mod+Shift+E { quit; }
+    Ctrl+Alt+Delete { quit; }
+    Mod+Shift+P { power-off-monitors; }
+}
+
+// ---------------------------------------------------------------------
+// Debug — lets Noctalia notification actions activate/focus windows
+// ---------------------------------------------------------------------
+debug {
+    honor-xdg-activation-with-invalid-serial
+}
