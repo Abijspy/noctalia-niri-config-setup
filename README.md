@@ -65,7 +65,7 @@ On other distributions, compositors your distribution doesn't package are greyed
    - Scroll and Umbriel are only in the AUR, so they need a helper.
 5. **Apps:**
    - terminal: alacritty, kitty, foot, ghostty or wezterm;
-   - file manager: nautilus, thunar, dolphin, nemo or none;
+   - file manager: 10 graphical and 5 terminal file managers, or none (see [File managers](#file-managers));
    - browser: Firefox, LibreWolf, Brave, Mullvad Browser, Tor Browser, Ungoogled Chromium, Zen Browser, Chromium or none (see [Browsers](#browsers)).
 
    The keybinds in every config are updated to match.
@@ -137,6 +137,26 @@ What to know about each one:
 - **Umbriel:** contains only the settings and keys documented on Noctalia's Umbriel page plus the app keys; window management uses Umbriel's own defaults. The keyboard layout isn't set, because that setting isn't documented.
 - **KDE Plasma:** Noctalia is started through Plasma's autostart. Plasma has no blur for Noctalia, and no screenshots, clipboard history or night light from Noctalia. Set shortcuts (`noctalia msg …`) in System Settings.
 
+## File managers
+
+Mod+E opens the file manager you pick. Terminal file managers open inside the terminal you chose (e.g. `kitty yazi`, `alacritty -e ranger`).
+
+| Graphical | | Terminal | |
+|---|---|---|---|
+| Nautilus | GNOME Files | Yazi | fast, image previews |
+| Dolphin | KDE, tabs and split view | ranger | vim keys |
+| Thunar | Xfce, lightweight | lf | minimal |
+| Nemo | Cinnamon, dual pane | nnn | tiny and fast |
+| Caja | MATE, classic | Midnight Commander | twin panel |
+| PCManFM / PCManFM-Qt | LXDE / LXQt, very light | | |
+| COSMIC Files | COSMIC, written in Rust | | |
+| Krusader | twin panel for power users | | |
+| Double Commander | Total Commander-like | | |
+
+Each one is looked up in your distribution's repositories, including the distro-specific name (e.g. `Thunar` on Fedora; `doublecmd-qt6` / `doublecmd-qt` / `doublecmd-gtk` for Double Commander). File managers that aren't packaged for your distribution are greyed out. The list scrolls on an 80×24 console.
+
+![File manager screen](docs/screenshots/filemanager.png)
+
 ## Browsers
 
 Firefox and Chromium plus privacy-focused browsers. Each one comes from the first source available:
@@ -187,7 +207,7 @@ The browser screen shows which source will be used, and Mod+B launches whatever 
 | `--aur-helper=…` | Arch only: `auto` (keep an installed one, else paru when needed), `paru`, `yay`, `none` |
 | `--user=NAME` | User to set up when run as root |
 | `--terminal=…` | `alacritty` `kitty` `foot` `ghostty` `wezterm` |
-| `--file-manager=…` | `nautilus` `thunar` `dolphin` `nemo` `none` |
+| `--file-manager=…` | `nautilus` `dolphin` `thunar` `nemo` `caja` `pcmanfm` `pcmanfm-qt` `cosmic-files` `krusader` `doublecmd` `yazi` `ranger` `lf` `nnn` `mc` `none` |
 | `--browser=…` | `firefox` `librewolf` `brave` `mullvad` `tor` `ungoogled` `zen` `chromium` `none` |
 | `--layout=…` | Keyboard layout(s), e.g. `us,de` |
 | `--no-apps` | Skip the file manager and browser (a terminal is always installed) |

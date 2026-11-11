@@ -21,7 +21,8 @@
 #    --aur-helper=auto|paru|yay|none  # auto: keep an installed one, else paru if needed
 #    --user=NAME                      # user to set up (when run as root)
 #    --terminal=alacritty|kitty|foot|ghostty|wezterm
-#    --file-manager=nautilus|thunar|dolphin|nemo|none
+#    --file-manager=nautilus|dolphin|thunar|nemo|caja|pcmanfm|pcmanfm-qt|
+#                   cosmic-files|krusader|doublecmd|yazi|ranger|lf|nnn|mc|none
 #    --browser=firefox|librewolf|brave|mullvad|tor|ungoogled|zen|chromium|none
 #    --layout=us                      # keyboard layout(s), e.g. us,de
 #    --no-apps                        # skip file manager and browser
@@ -57,7 +58,7 @@ COMPOSITORS="niri"
 COMPS_FROM_FLAG=0
 AUR_HELPER="auto"
 
-usage() { sed -n '3,33p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '3,34p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
 
 for arg in "$@"; do
     case "$arg" in
@@ -84,7 +85,7 @@ check_opt() {  # check_opt name value allowed...
     echo "Invalid --$name=$val (allowed: $*)"; exit 1
 }
 check_opt terminal     "$TERM_APP"    alacritty kitty foot ghostty wezterm
-check_opt file-manager "$FM_APP"      nautilus thunar dolphin nemo none
+check_opt file-manager "$FM_APP"      nautilus dolphin thunar nemo caja pcmanfm pcmanfm-qt cosmic-files krusader doublecmd yazi ranger lf nnn mc none
 check_opt browser      "$BROWSER_APP" firefox librewolf brave mullvad tor ungoogled zen chromium none
 [[ $KB_LAYOUT =~ ^[a-z]{2,}(,[a-z]{2,})*$ ]] || { echo "Invalid --layout=$KB_LAYOUT (e.g. us or us,de)"; exit 1; }
 check_opt aur-helper   "$AUR_HELPER"  auto paru yay none
@@ -141,6 +142,57 @@ browser_field() {  # browser_field ID FIELD_NUMBER
     done
     return 1
 }
+# ---------- file managers ----------
+# id | name | description | kind (gui/tui) | package names to try | Gentoo atom | command
+FM_TABLE=(
+    "nautilus|Nautilus|GNOME Files|gui|nautilus|gnome-base/nautilus|nautilus"
+    "dolphin|Dolphin|KDE · tabs and split view|gui|dolphin|kde-apps/dolphin|dolphin"
+    "thunar|Thunar|Xfce · lightweight|gui|thunar Thunar|xfce-base/thunar|thunar"
+    "nemo|Nemo|Cinnamon · dual pane|gui|nemo|gnome-extra/nemo|nemo"
+    "caja|Caja|MATE · classic|gui|caja|mate-base/caja|caja"
+    "pcmanfm|PCManFM|LXDE · very light GTK|gui|pcmanfm pcmanfm-gtk3|x11-misc/pcmanfm|pcmanfm"
+    "pcmanfm-qt|PCManFM-Qt|LXQt · very light Qt|gui|pcmanfm-qt|lxqt-base/pcmanfm-qt|pcmanfm-qt"
+    "cosmic-files|COSMIC Files|COSMIC · written in Rust|gui|cosmic-files|cosmic-base/cosmic-files|cosmic-files"
+    "krusader|Krusader|twin panel · for power users|gui|krusader|kde-misc/krusader|krusader"
+    "doublecmd|Double Commander|twin panel · Total Commander-like|gui|doublecmd-qt6 doublecmd-qt doublecmd-gtk doublecmd-gtk2 doublecmd|app-misc/doublecmd|doublecmd"
+    "yazi|Yazi|terminal · fast · image previews|tui|yazi|app-misc/yazi|yazi"
+    "ranger|ranger|terminal · vim keys|tui|ranger|app-misc/ranger|ranger"
+    "lf|lf|terminal · minimal|tui|lf|app-misc/lf|lf"
+    "nnn|nnn|terminal · tiny and fast|tui|nnn|app-misc/nnn|nnn"
+    "mc|Midnight Commander|terminal · twin panel|tui|mc|app-misc/mc|mc"
+)
+fm_field() {  # fm_field ID FIELD_NUMBER
+    local row
+    for row in "${FM_TABLE[@]}"; do
+        [[ ${row%%|*} == "$1" ]] && { cut -d'|' -f"$2" <<< "$row"; return 0; }
+    done
+    return 1
+}
+# How each terminal runs a program: terminal file managers open inside it.
+term_exec() {  # term_exec TERMINAL -> launch prefix
+    case $1 in
+        alacritty) echo "alacritty -e" ;; ghostty) echo "ghostty -e" ;;
+        wezterm)   echo "wezterm start --" ;; *) echo "$1" ;;   # kitty, foot take the command directly
+    esac
+}
+fm_command() {  # what Mod+E runs
+    local c; c="$(fm_field "$FM_APP" 7)"
+    if [[ $(fm_field "$FM_APP" 4) == tui ]]; then echo "$(term_exec "$TERM_APP") $c"; else echo "$c"; fi
+}
+declare -A FM_PKG   # id -> package that's available here ("" = none)
+fm_scan() {  # look up every file manager's package once
+    [[ ${FM_SCANNED:-0} -eq 1 ]] && return 0
+    FM_SCANNED=1
+    local row id cands c
+    for row in "${FM_TABLE[@]}"; do
+        id=${row%%|*}
+        if [[ $FAMILY == gentoo ]]; then cands="$(fm_field "$id" 6)"; else cands="$(fm_field "$id" 5)"; fi
+        FM_PKG[$id]=""
+        if [[ $CONFIGS_ONLY -eq 1 ]]; then FM_PKG[$id]=${cands%% *}; continue; fi
+        for c in $cands; do pm_has "$c" && { FM_PKG[$id]=$c; break; }; done
+    done
+}
+
 FLATPAK_BIN=/var/lib/flatpak/exports/bin
 BROWSER_CMD=""   # what Mod+B runs; set once the browser is installed
 
@@ -726,28 +778,44 @@ _items_parse() {  # fills _NAME _DESC _VAL _OFF and _W (name column width)
     for i in "${!_DESC[@]}"; do _DESC[i]="$(fit "${_DESC[i]}" "$max")"; done
 }
 
-menu() {  # menu ROW CURRENT_VALUE item...
+menu() {  # menu ROW CURRENT_VALUE item...   (item 4th field "1" = greyed out)
     local row=$1 cur=$2; shift 2
     _items_parse "$@"
-    local n=${#_VAL[@]} i sel=0 k line
+    local n=${#_VAL[@]} i sel=0 k line top=0
+    # Scroll when the list is taller than the space above the footer.
+    local h=$(( ROWS - row - 3 )); (( h > n )) && h=$n; (( h < 3 )) && h=3
     for i in "${!_VAL[@]}"; do [[ ${_VAL[i]} == "$cur" ]] && sel=$i; done
     hide_cursor
     while true; do
-        for i in "${!_VAL[@]}"; do
-            if (( i == sel )); then
+        (( sel < top )) && top=$sel
+        (( sel >= top + h )) && top=$(( sel - h + 1 ))
+        for (( i = top; i < top + h && i < n; i++ )); do
+            if (( _OFF[i] )); then
+                line="$( (( i == sel )) && printf '%s' "${P}${SYM_ARROW}${R}" || printf ' ')"
+                line+=" ${O}$(printf "%-${_W}s" "${_NAME[i]}")  ${_DESC[i]}${R}"
+            elif (( i == sel )); then
                 line="${P}${B}${SYM_ARROW}${R} ${P}${B}$(printf "%-${_W}s" "${_NAME[i]}")${R}  ${X}${_DESC[i]}${R}"
             else
                 line="  ${X}$(printf "%-${_W}s" "${_NAME[i]}")${R}  ${D}${_DESC[i]}${R}"
             fi
-            at $(( row + i )) 3; out "${line}${EL}"
+            at $(( row + i - top )) 3; out "${line}${EL}"
         done
+        if (( n > h )); then   # scroll hint under the list
+            local more=""
+            (( top > 0 )) && more+="↑ ${top} more  "
+            (( top + h < n )) && more+="↓ $(( n - top - h )) more"
+            at $(( row + h )) 5; out "${D}${more}${R}${EL}"
+        fi
         k="$(read_key)"
         case $k in
             up)    sel=$(( (sel - 1 + n) % n )) ;;
             down|tab) sel=$(( (sel + 1) % n )) ;;
             home)  sel=0 ;;
             end)   sel=$(( n - 1 )) ;;
-            enter|right) ANSWER=${_VAL[sel]}; show_cursor; return 0 ;;
+            enter|right)
+                if (( _OFF[sel] )); then err_line "${_NAME[sel]}: ${_DESC[sel]}"; continue; fi
+                at 8 3; out "$EL"
+                ANSWER=${_VAL[sel]}; show_cursor; return 0 ;;
             backspace|left) [[ $INSTALL_STARTED -eq 0 ]] && { show_cursor; return 2; } ;;
             esc)   show_cursor; [[ $INSTALL_STARTED -eq 1 ]] && return 1; cancelled ;;
         esac
@@ -1017,14 +1085,21 @@ p_term() {
 
 p_fm() {
     [[ $INSTALL_APPS -eq 1 ]] || return 3
-    screen "Apps" "File manager" "Opens with Mod+E."
+    if [[ ${FM_SCANNED:-0} -eq 0 && $CONFIGS_ONLY -eq 0 ]]; then
+        screen "Apps" "File manager" "Checking which file managers $FAMILY_LABEL packages…"
+    fi
+    fm_scan
+    local opts=() row id name desc
+    for row in "${FM_TABLE[@]}"; do
+        IFS='|' read -r id name desc _ <<< "$row"
+        if [[ -n ${FM_PKG[$id]} ]]; then opts+=("$name|$desc|$id|0")
+        else opts+=("$name|not in your repositories|$id|1"); fi
+    done
+    opts+=("None|leave Mod+E unbound|none|0")
+    local cur=$FM_APP; [[ $cur != none && -z ${FM_PKG[$cur]:-} ]] && cur=none
+    screen "Apps" "File manager" "Opens with Mod+E. Terminal ones open in $(printf '%s' "$TERM_APP")."
     nav_footer "enter" "select"
-    menu 9 "$FM_APP" \
-        "Nautilus|GNOME Files|nautilus" \
-        "Thunar|Xfce · lightweight|thunar" \
-        "Dolphin|KDE · feature-rich|dolphin" \
-        "Nemo|Cinnamon|nemo" \
-        "None|leave Mod+E unbound|none" || return 2
+    menu 9 "$cur" "${opts[@]}" || return 2
     FM_APP=$ANSWER
 }
 
@@ -1083,7 +1158,8 @@ p_review() {
     [[ $CREATE_USER -eq 1 ]] && user_txt="$TARGET_USER ${D}(new, sudo)${R}"
     if [[ $INSTALL_APPS -eq 1 ]]; then
         local bname="none"; [[ $BROWSER_APP != none ]] && bname="$(browser_field "$BROWSER_APP" 2)"
-        apps_txt="$TERM_APP, $FM_APP, $bname"
+        local fname="none"; [[ $FM_APP != none ]] && fname="$(fm_field "$FM_APP" 2)"
+        apps_txt="$TERM_APP, $fname, $bname"
     fi
     if [[ $INSTALL_GREETER -eq 0 ]]; then greeter_txt="${D}off${R}"
     elif [[ -n $CURRENT_DM && $SWITCH_DM -eq 0 ]]; then greeter_txt="installed ${D}(keeps $CURRENT_DM)${R}"
@@ -1179,6 +1255,10 @@ plain_decisions() {
     for c in "${COMPS[@]}"; do
         [[ ${COMP_OK[$c]:-1} -eq 1 ]] || die "$(comp_field "$c" 2) can't be installed here: ${COMP_WHY[$c]}."
     done
+    if [[ $INSTALL_APPS -eq 1 && $FM_APP != none && $CONFIGS_ONLY -eq 0 ]]; then
+        fm_scan
+        [[ -n ${FM_PKG[$FM_APP]} ]] || die "$(fm_field "$FM_APP" 2) isn't in your repositories on $FAMILY_LABEL; pick another --file-manager."
+    fi
     [[ $AUR_HELPER == auto ]] && AUR_HELPER="$(default_helper)"
     if [[ $AUR_HELPER == none ]] && needs_aur; then die "$(aur_comp_names) is only in the AUR: use --aur-helper=paru or yay."; fi
     info "Compositors: $(comp_names) | AUR helper: $AUR_HELPER"
@@ -1298,9 +1378,10 @@ get_cfg() {  # get_cfg REPO_PATH DEST  — from the clone, or download it
 apply_apps() {  # apply_apps FILE STYLE
     local f=$1 style=$2 app def
     sed -i "s/\balacritty\b/$TERM_APP/g" "$f"
-    local bcmd=${BROWSER_CMD:-$BROWSER_APP}
+    local bcmd=${BROWSER_CMD:-$BROWSER_APP} fcmd="none"
     [[ $BROWSER_APP == none ]] && bcmd=none
-    for def in nautilus:$FM_APP "firefox:$bcmd"; do
+    [[ $FM_APP != none ]] && fcmd="$(fm_command)"
+    for def in "nautilus:$fcmd" "firefox:$bcmd"; do
         app=${def#*:}; def=${def%%:*}
         if [[ $app == none ]]; then
             case $style in
@@ -1309,6 +1390,10 @@ apply_apps() {  # apply_apps FILE STYLE
                 hash) sed -i "/\b$def\b/ s|^|# |" "$f" ;;
                 xml)  sed -i "/\b$def\b/ s|^\(.*\)$|<!-- \1 -->|" "$f" ;;
             esac
+        elif [[ $style == kdl && $app == *" "* ]]; then
+            # niri's spawn takes each argument as its own string: "kitty" "yazi"
+            local q; q="$(printf '"%s" ' $app)"; q=${q% }
+            sed -i "s|\"$def\"|$q|g" "$f"
         else
             sed -i "s|\b$def\b|$app|g" "$f"
         fi
@@ -1481,7 +1566,7 @@ run_steps() {
         for g in portal-gtk keyring audio media fonts; do addp optional "$(pkgs "$g")"; done
         addp essential "$(pkgs "$TERM_APP")"   # always: Mod+Return is your way in
         if [[ $INSTALL_APPS -eq 1 ]]; then
-            [[ $FM_APP != none ]] && addp optional "$(pkgs "$FM_APP")"
+            if [[ $FM_APP != none ]]; then fm_scan; [[ -n ${FM_PKG[$FM_APP]} ]] && optional+=("${FM_PKG[$FM_APP]}"); fi
         fi
         [[ $INSTALL_GREETER -eq 1 ]] && addp essential "$(pkgs greeter)"
         if [[ $INSTALL_GREETER -eq 1 || $POLKIT_AGENT -eq 1 ]]; then addp optional "$(pkgs polkit)"; fi
