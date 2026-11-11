@@ -51,6 +51,7 @@ FM_APP="nautilus"
 BROWSER_APP="firefox"
 KB_LAYOUT="us"
 COMPOSITORS="niri"
+COMPS_FROM_FLAG=0
 AUR_HELPER="auto"
 
 usage() { sed -n '3,30p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
@@ -67,7 +68,7 @@ for arg in "$@"; do
         --file-manager=*)  FM_APP="${arg#*=}" ;;
         --browser=*)       BROWSER_APP="${arg#*=}" ;;
         --layout=*)        KB_LAYOUT="${arg#*=}" ;;
-        --compositors=*)   COMPOSITORS="${arg#*=}" ;;
+        --compositors=*)   COMPOSITORS="${arg#*=}"; COMPS_FROM_FLAG=1 ;;
         --aur-helper=*)    AUR_HELPER="${arg#*=}" ;;
         -h|--help)         usage; exit 0 ;;
         *) echo "Unknown option: $arg (see --help)"; exit 1 ;;
@@ -206,7 +207,6 @@ fg() { if [[ $IS_CONSOLE -eq 1 ]]; then printf '\e[3%dm' "${SLOT[$1]}"
        else local h=${HEX[$1]}; printf '\e[38;2;%d;%d;%dm' "0x${h:0:2}" "0x${h:2:2}" "0x${h:4:2}"; fi; }
 bg() { if [[ $IS_CONSOLE -eq 1 ]]; then printf '\e[4%dm' "${SLOT[$1]}"
        else local h=${HEX[$1]}; printf '\e[48;2;%d;%d;%dm' "0x${h:0:2}" "0x${h:2:2}" "0x${h:4:2}"; fi; }
-gc() { if [[ $IS_CONSOLE -eq 1 ]]; then echo "${SLOT[$1]}"; else echo "#${HEX[$1]}"; fi; }  # gum color
 
 R=$'\e[0m'; B=$'\e[1m'; EL=$'\e[K'
 
@@ -234,7 +234,6 @@ setup_theme() {
         # Ask xterm-compatible terminals to use Noctalia's surface/text colors.
         printf '\e]11;#%s\a\e]10;#%s\a' "${HEX[surface]}" "${HEX[text]}" >/dev/tty
     fi
-    export GUM_CHOOSE_SHOW_HELP=false GUM_INPUT_SHOW_HELP=false   # we draw our own key hints
 }
 
 ui_restore() {
@@ -309,30 +308,37 @@ card() {  # card ROW "line" "line" ...   (outline border, 2-col padding)
 
 err_line() { at 8 3; out "${E}${SYM_FAIL} $1${R}"; }
 
-# Read one key: prints enter / esc / other.
+# ---------- keyboard input ----------
+# Prints one of: up down left right home end enter esc space tab backspace
+# delete other, or "char:X" for a printable character.
 read_key() {
-    local k rest=""
+    local k r1="" r2="" r3=""
     IFS= read -rsn1 k </dev/tty || { echo esc; return; }
-    if [[ $k == $'\e' ]]; then
-        IFS= read -rsn2 -t 0.05 rest </dev/tty || true
-        [[ -z $rest ]] && { echo esc; return; }
-        echo other; return
-    fi
-    [[ -z $k ]] && { echo enter; return; }
-    echo other
-}
-
-# Continue / quit prompt for info screens.
-press_continue() {  # press_continue ROW [label]
-    at "$1" 3; out "$(pill "${2:-Continue}" "$BP")"
-    footer "enter" "continue" "esc" "quit"
-    printf '\e[?25l' >/dev/tty
-    while true; do
-        case "$(read_key)" in
-            enter) printf '\e[?25h' >/dev/tty; return 0 ;;
-            esc)   printf '\e[?25h' >/dev/tty; [[ $INSTALL_STARTED -eq 0 ]] && cancelled; return 0 ;;
-        esac
-    done
+    case $k in
+        $'\e')
+            IFS= read -rsn1 -t 0.05 r1 </dev/tty || { echo esc; return; }   # lone Esc
+            if [[ $r1 == "[" || $r1 == "O" ]]; then
+                IFS= read -rsn1 -t 0.05 r2 </dev/tty || true
+                case $r2 in
+                    A) echo up ;; B) echo down ;; C) echo right ;; D) echo left ;;
+                    H) echo home ;; F) echo end ;;
+                    [0-9])
+                        IFS= read -rsn1 -t 0.05 r3 </dev/tty || true
+                        case "$r2$r3" in
+                            1~|7~) echo home ;; 4~|8~) echo end ;; 3~) echo delete ;;
+                            *) while IFS= read -rsn1 -t 0.01 _ </dev/tty; do :; done; echo other ;;
+                        esac ;;
+                    *) echo other ;;
+                esac
+            else
+                echo other
+            fi ;;
+        "")              echo enter ;;
+        " ")             echo space ;;
+        $'\t')           echo tab ;;
+        $'\x7f'|$'\b')   echo backspace ;;
+        *)               printf 'char:%s\n' "$k" ;;
+    esac
 }
 
 cancelled() {
@@ -341,52 +347,165 @@ cancelled() {
     exit 0
 }
 
-# ---------- gum widgets (themed) ----------
-gchoose() {  # gchoose [extra gum flags...] -- "Label|value" ...  (labels: no commas, gum --selected splits on them)
-    local flags=()
-    while [[ $1 != -- ]]; do flags+=("$1"); shift; done; shift
-    gum choose --header "" --label-delimiter "|" --show-help=false \
-        --cursor "  ${SYM_ARROW} " --cursor.foreground "$(gc primary)" \
-        --item.foreground "$(gc text)" --selected.foreground "$(gc primary)" \
-        --height 10 "${flags[@]}" "$@" 2>/dev/tty </dev/tty
+hide_cursor() { printf '\e[?25l' >/dev/tty; }
+show_cursor() { printf '\e[?25h' >/dev/tty; }
+
+# Key hints, with Backspace shown the way the console font can draw it.
+BKSP_KEY="⌫"
+nav_footer() {  # nav_footer [extra key label ...] — adds move / back / quit
+    local extra=("$@")
+    footer "↑↓" "move" "${extra[@]}" "$BKSP_KEY" "back" "esc" "quit"
 }
 
-ginput() {  # ginput "placeholder" "value" [--password]
-    gum input --placeholder "$1" --value "$2" "${@:3}" --width 50 \
-        --prompt "  ${SYM_ARROW} " --prompt.foreground "$(gc primary)" \
-        --cursor.foreground "$(gc primary)" --placeholder.foreground "$(gc dim)" \
-        2>/dev/tty </dev/tty
+# Info screens: Enter continues, Backspace goes back (returns 2), Esc quits.
+press_continue() {  # press_continue ROW [label] [allow_back=1]
+    local allow_back=${3:-1}
+    at "$1" 3; out "$(pill "${2:-Continue}" "$BP")"
+    if [[ $INSTALL_STARTED -eq 1 ]]; then footer "enter" "continue"
+    elif [[ $allow_back -eq 1 ]]; then footer "enter" "continue" "$BKSP_KEY" "back" "esc" "quit"
+    else footer "enter" "continue" "esc" "quit"; fi
+    hide_cursor
+    while true; do
+        case "$(read_key)" in
+            enter) show_cursor; return 0 ;;
+            esc)   show_cursor; [[ $INSTALL_STARTED -eq 0 ]] && cancelled; return 0 ;;
+            backspace|left) [[ $INSTALL_STARTED -eq 0 && $allow_back -eq 1 ]] && { show_cursor; return 2; } ;;
+        esac
+    done
+}
+
+# ---------- list widgets ----------
+# Items are "name|description|value". The choice is left in ANSWER.
+#   return 0 = chosen, 2 = back (Backspace / ←); Esc quits the installer.
+ANSWER=""
+_items_parse() {  # fills _NAME _DESC _VAL and _W (name column width)
+    _NAME=(); _DESC=(); _VAL=(); _W=0
+    local it n d v
+    for it in "$@"; do
+        IFS='|' read -r n d v <<< "$it"
+        _NAME+=("$n"); _DESC+=("$d"); _VAL+=("$v")
+        (( ${#n} > _W )) && _W=${#n}
+    done
+}
+
+menu() {  # menu ROW CURRENT_VALUE item...
+    local row=$1 cur=$2; shift 2
+    _items_parse "$@"
+    local n=${#_VAL[@]} i sel=0 k line
+    for i in "${!_VAL[@]}"; do [[ ${_VAL[i]} == "$cur" ]] && sel=$i; done
+    hide_cursor
+    while true; do
+        for i in "${!_VAL[@]}"; do
+            if (( i == sel )); then
+                line="${P}${B}${SYM_ARROW}${R} ${P}${B}$(printf "%-${_W}s" "${_NAME[i]}")${R}  ${X}${_DESC[i]}${R}"
+            else
+                line="  ${X}$(printf "%-${_W}s" "${_NAME[i]}")${R}  ${D}${_DESC[i]}${R}"
+            fi
+            at $(( row + i )) 3; out "${line}${EL}"
+        done
+        k="$(read_key)"
+        case $k in
+            up)    sel=$(( (sel - 1 + n) % n )) ;;
+            down|tab) sel=$(( (sel + 1) % n )) ;;
+            home)  sel=0 ;;
+            end)   sel=$(( n - 1 )) ;;
+            enter|right) ANSWER=${_VAL[sel]}; show_cursor; return 0 ;;
+            backspace|left) [[ $INSTALL_STARTED -eq 0 ]] && { show_cursor; return 2; } ;;
+            esc)   show_cursor; [[ $INSTALL_STARTED -eq 1 ]] && return 1; cancelled ;;
+        esac
+    done
+}
+
+# Multi-select. MIN=1: Enter with nothing ticked picks the highlighted item.
+# ANSWER = ticked values, space separated, in list order.
+checklist() {  # checklist ROW "ticked values (space separated)" MIN item...
+    local row=$1 ticked=" $2 " min=$3; shift 3
+    _items_parse "$@"
+    local n=${#_VAL[@]} i sel=0 k line box on=()
+    for i in "${!_VAL[@]}"; do [[ $ticked == *" ${_VAL[i]} "* ]] && on[i]=1 || on[i]=0; done
+    hide_cursor
+    while true; do
+        for i in "${!_VAL[@]}"; do
+            if (( on[i] )); then box="${S}${B}${SYM_ON}${R}"; else box="${O}${SYM_OFF}${R}"; fi
+            if (( i == sel )); then
+                line="${P}${B}${SYM_ARROW}${R} ${box} ${P}${B}$(printf "%-${_W}s" "${_NAME[i]}")${R}  ${X}${_DESC[i]}${R}"
+            elif (( on[i] )); then
+                line="  ${box} ${S}$(printf "%-${_W}s" "${_NAME[i]}")${R}  ${D}${_DESC[i]}${R}"
+            else
+                line="  ${box} ${X}$(printf "%-${_W}s" "${_NAME[i]}")${R}  ${D}${_DESC[i]}${R}"
+            fi
+            at $(( row + i )) 3; out "${line}${EL}"
+        done
+        k="$(read_key)"
+        case $k in
+            up)    sel=$(( (sel - 1 + n) % n )) ;;
+            down|tab) sel=$(( (sel + 1) % n )) ;;
+            home)  sel=0 ;;
+            end)   sel=$(( n - 1 )) ;;
+            space|char:x) on[sel]=$(( 1 - on[sel] )) ;;
+            enter|right)
+                local count=0; for i in "${!_VAL[@]}"; do (( on[i] )) && count=$((count + 1)); done
+                (( min > 0 && count == 0 )) && on[sel]=1   # nothing ticked: take the highlighted one
+                ANSWER=""
+                for i in "${!_VAL[@]}"; do (( on[i] )) && ANSWER+="${_VAL[i]} "; done
+                ANSWER=${ANSWER% }
+                show_cursor; return 0 ;;
+            backspace|left) show_cursor; return 2 ;;
+            esc)   show_cursor; cancelled ;;
+        esac
+    done
+}
+
+# Text field. Backspace edits; Backspace on an empty field goes back.
+text_input() {  # text_input ROW INITIAL PLACEHOLDER [mask]
+    local row=$1 text=$2 ph=$3 mask=${4:-0} k shown
+    show_cursor
+    while true; do
+        if [[ -z $text ]]; then shown="${D}${ph}${R}"
+        elif [[ $mask -eq 1 ]]; then shown="${X}$(rep "${SYM_BUL}" ${#text})${R}"
+        else shown="${X}${text}${R}"; fi
+        at "$row" 3; out "${P}${B}${SYM_ARROW}${R} ${shown}${EL}"
+        # put the terminal cursor at the end of the typed text
+        if [[ -z $text ]]; then at "$row" 5; else at "$row" $(( 5 + ${#text} )); fi
+        k="$(read_key)"
+        case $k in
+            char:*) (( ${#text} < 64 )) && text+="${k#char:}" ;;
+            space)  [[ $mask -eq 1 ]] && (( ${#text} < 64 )) && text+=" " ;;
+            backspace)
+                if [[ -z $text ]]; then return 2; fi
+                text=${text%?} ;;
+            enter)  ANSWER=$text; return 0 ;;
+            esc)    cancelled ;;
+        esac
+    done
 }
 
 # ---------- UI setup ----------
 init_ui() {
     [[ $ASSUME_YES -eq 1 || $NO_TUI -eq 1 || $HAVE_TTY -eq 0 ]] && return 0
-    if ! command -v gum >/dev/null; then
-        info "Installing gum for the installer UI…"
-        pac_install_quiet gum || { warn "Couldn't install gum — using plain prompts."; return 0; }
-    fi
     read -r ROWS COLS < <(stty size </dev/tty 2>/dev/null || echo "24 80")
     if (( ROWS < 22 || COLS < 76 )); then
         warn "Terminal is ${COLS}x${ROWS}; the installer UI needs at least 76x22 — using plain prompts."
         return 0
     fi
     (( COLS > 100 )) && COLS=100
-    # Make sure bash and gum handle the UI's UTF-8 characters.
+    # Make sure bash handles the UI's UTF-8 characters.
     if locale -a 2>/dev/null | grep -qi '^c\.utf-\?8$'; then export LC_ALL=C.UTF-8; fi
     UI=tui
     setup_theme
+    [[ $IS_CONSOLE -eq 1 ]] && BKSP_KEY="bksp"
     build_steps
 }
 
-# ---------- TUI screens ----------
+# ---------- TUI pages ----------
+# Each page returns 0 = next, 2 = back, 3 = not shown (skip in the same direction).
 existing_users() { getent passwd | awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {print $1}'; }
 
-scr_welcome() {
+p_welcome() {
     screen "Welcome" "" ""
     at 7 5;  out "${P}${B}█▄ █ █▀█ █▀▀ ▀█▀ ▄▀█ █   █ ▄▀█${R}"
     at 8 5;  out "${P}${B}█ ▀█ █▄█ █▄▄  █  █▀█ █▄▄ █ █▀█${R}"
     at 10 5; out "${X}A complete Noctalia v5 desktop on the compositor you choose.${R}"
-
     local laptop dm
     [[ $IS_LAPTOP -eq 1 ]] && laptop="$(pill laptop "$BS")" || laptop="$(pill desktop "$BS")"
     [[ -n $CURRENT_DM ]] && dm="$(pill "$CURRENT_DM" "$BO" "$X")" || dm="$(pill "no login manager" "$BO" "$X")"
@@ -398,203 +517,195 @@ scr_welcome() {
         "${P}${SYM_BUL}${R} ${X}yay or paru${R}       ${D}optional AUR helper${R}"
     at 20 5; out "${D}Detected${R}  ${laptop} ${dm}"
     at 21 5; out "${D}Nothing changes until you confirm the review.${R}"
-    press_continue 22 "Get started"
+    press_continue 22 "Get started" 0
 }
 
-scr_user() {
-    [[ $IS_ROOT -eq 1 ]] || { TARGET_USER="$(id -un)"; return; }
-    if [[ -n $TARGET_USER ]]; then
-        id "$TARGET_USER" &>/dev/null || CREATE_USER=1
-        [[ $CREATE_USER -eq 0 ]] && return
-    fi
-    local users opts=() u pick
+USER_PRESET=0   # --user=NAME for an existing user: no user pages
+p_user() {
+    [[ $IS_ROOT -eq 1 && $USER_PRESET -eq 0 ]] || return 3
+    local users opts=() u cur
     mapfile -t users < <(existing_users)
-    if [[ $CREATE_USER -eq 0 ]]; then
-        screen "User" "Who is this desktop for?" "You're running as root. Pick a user, or create one."
-        for u in "${users[@]}"; do opts+=("$u|$u"); done
-        opts+=("Create a new user|+new")
-        footer "↑↓" "move" "enter" "continue" "esc" "quit"
-        pick="$(gchoose -- "${opts[@]}")" || cancelled
-        [[ $pick == "+new" ]] && CREATE_USER=1 || TARGET_USER="$pick"
+    for u in "${users[@]}"; do opts+=("$u|existing user|$u"); done
+    opts+=("Create a new user|added to wheel · sudo enabled|+new")
+    cur=$TARGET_USER; [[ $CREATE_USER -eq 1 ]] && cur="+new"
+    screen "User" "Who is this desktop for?" "You're running as root. Pick a user, or create one."
+    nav_footer "enter" "select"
+    menu 9 "$cur" "${opts[@]}" || return 2
+    if [[ $ANSWER == "+new" ]]; then
+        [[ $CREATE_USER -eq 0 ]] && TARGET_USER=""
+        CREATE_USER=1
+    else
+        CREATE_USER=0; TARGET_USER=$ANSWER
     fi
-    [[ $CREATE_USER -eq 1 ]] || return 0
+}
 
+p_newname() {
+    [[ $CREATE_USER -eq 1 ]] || return 3
     local errmsg=""
     while true; do
         screen "User" "Create a user" "Lowercase letters, digits, - or _. Gets sudo via the wheel group."
         [[ -n $errmsg ]] && err_line "$errmsg"
-        footer "enter" "continue" "esc" "quit"
-        TARGET_USER="$(ginput "username" "$TARGET_USER")" || cancelled
-        if [[ ! $TARGET_USER =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then errmsg="'$TARGET_USER' isn't a valid username."
-        elif id "$TARGET_USER" &>/dev/null; then errmsg="'$TARGET_USER' already exists."
-        else break; fi
-    done
-    errmsg=""
-    while true; do
-        local p1 p2
-        screen "User" "Password for $TARGET_USER" "Type it twice. Nothing is shown while typing."
-        [[ -n $errmsg ]] && err_line "$errmsg"
-        footer "enter" "continue" "esc" "quit"
-        p1="$(ginput "password" "" --password)" || cancelled
-        at 11 1
-        p2="$(ginput "repeat password" "" --password)" || cancelled
-        if [[ -z $p1 ]]; then errmsg="The password can't be empty."
-        elif [[ $p1 != "$p2" ]]; then errmsg="The passwords didn't match."
-        else NEW_USER_PASS="$p1"; break; fi
+        footer "enter" "continue" "$BKSP_KEY" "back (when empty)" "esc" "quit"
+        text_input 9 "$TARGET_USER" "username" || return 2
+        if [[ ! $ANSWER =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then errmsg="'$ANSWER' isn't a valid username."; TARGET_USER=$ANSWER
+        elif id "$ANSWER" &>/dev/null; then errmsg="'$ANSWER' already exists."; TARGET_USER=$ANSWER
+        else TARGET_USER=$ANSWER; return 0; fi
     done
 }
 
-scr_desktop() {
-    local opts=() sel=() row id name aur desc label picked errmsg=""
+p_newpass() {
+    [[ $CREATE_USER -eq 1 ]] || return 3
+    local errmsg="" p1 p2
+    while true; do
+        screen "User" "Password for $TARGET_USER" "Type it twice. Only dots are shown."
+        [[ -n $errmsg ]] && err_line "$errmsg"
+        footer "enter" "continue" "$BKSP_KEY" "back (when empty)" "esc" "quit"
+        at 9 3; out "${D}Password${R}"
+        text_input 10 "" "password" 1 || return 2
+        p1=$ANSWER
+        at 12 3; out "${D}Repeat${R}"
+        if ! text_input 13 "" "repeat password" 1; then errmsg=""; continue; fi   # back to the first field
+        p2=$ANSWER
+        if [[ -z $p1 ]]; then errmsg="The password can't be empty."
+        elif [[ $p1 != "$p2" ]]; then errmsg="The passwords didn't match."
+        else NEW_USER_PASS=$p1; return 0; fi
+    done
+}
+
+p_desktop() {
+    local opts=() row id name aur desc
     for row in "${COMP_TABLE[@]}"; do
         IFS='|' read -r id name _ aur _ desc <<< "$row"
-        label="$(printf '%-11s %s' "$name" "$desc")"
-        [[ -n $aur ]] && label+="  (AUR)"
-        opts+=("$label|$id")
-        has_comp "$id" && sel+=("$label")
+        [[ -n $aur ]] && desc+="  (AUR)"
+        opts+=("$name|$desc|$id")
     done
-    while true; do
-        screen "Desktop" "Choose your compositor" "Pick one or more. Each gets a ready config with Noctalia set up."
-        [[ -n $errmsg ]] && err_line "$errmsg"
-        footer "↑↓" "move" "space" "toggle" "enter" "continue" "esc" "quit"
-        local IFS_old=$IFS; IFS=,; local selected="${sel[*]}"; IFS=$IFS_old
-        picked="$(gchoose --no-limit --selected "$selected" --selected.foreground "$(gc secondary)" \
-            --cursor-prefix "${SYM_OFF} " --unselected-prefix "${SYM_OFF} " --selected-prefix "${SYM_ON} " \
-            -- "${opts[@]}")" || cancelled
-        mapfile -t COMPS <<< "$picked"
-        [[ -n ${COMPS[0]:-} ]] && break
-        COMPS=(); errmsg="Pick at least one: tick it with Space, then press Enter."
-    done
+    screen "Desktop" "Choose your compositor" "Space ticks one or more. Enter alone picks the highlighted one."
+    nav_footer "space" "tick" "enter" "continue"
+    checklist 9 "${COMPS[*]}" 1 "${opts[@]}" || return 2
+    read -ra COMPS <<< "$ANSWER"
     lid_supported || LID_FIX=0
 }
 
-scr_aur() {
-    local sub opts=() cur label cur_label="" pick errmsg=""
+p_extras() {
+    local opts=(
+        "Noctalia Greeter|login screen with greetd|greeter"
+        "Type-to-launch|type in the overview to open the launcher|launch"
+        "Polkit agent|Noctalia asks for app passwords|polkit"
+        "File manager and browser|apps for Mod+E and Mod+B|apps"
+    ) ticked=""
+    [[ $IS_LAPTOP -eq 1 ]] && lid_supported && opts+=("Lid lock|lock before suspend on lid close|lid")
+    [[ $INSTALL_GREETER -eq 1 ]] && ticked+="greeter "
+    [[ $TYPE_TO_LAUNCH -eq 1 ]] && ticked+="launch "
+    [[ $POLKIT_AGENT -eq 1 ]] && ticked+="polkit "
+    [[ $INSTALL_APPS -eq 1 ]] && ticked+="apps "
+    [[ $LID_FIX -eq 1 ]] && ticked+="lid "
+    screen "Extras" "Choose your extras" "Noctalia, portals, audio, fonts and a terminal are always installed."
+    nav_footer "space" "toggle" "enter" "continue"
+    checklist 9 "$ticked" 0 "${opts[@]}" || return 2
+    INSTALL_GREETER=0; TYPE_TO_LAUNCH=0; POLKIT_AGENT=0; INSTALL_APPS=0; LID_FIX=0
+    local v
+    for v in $ANSWER; do
+        case $v in
+            greeter) INSTALL_GREETER=1 ;; launch) TYPE_TO_LAUNCH=1 ;; polkit) POLKIT_AGENT=1 ;;
+            apps) INSTALL_APPS=1 ;; lid) LID_FIX=1 ;;
+        esac
+    done
+}
+
+p_aur() {
+    local sub opts=() cur errmsg=""
     if needs_aur; then sub="$(aur_comp_names) is only in the AUR, so it needs a helper."
     else sub="Optional. Lets you install AUR packages later."; fi
-    [[ -n $EXISTING_HELPER ]] && opts+=("Use installed $EXISTING_HELPER   already on this system|$EXISTING_HELPER")
-    [[ $EXISTING_HELPER != paru ]] && opts+=("paru        fast · written in Rust|paru")
-    [[ $EXISTING_HELPER != yay ]] && opts+=("yay         popular · written in Go|yay")
-    opts+=("None        skip the AUR|none")
+    [[ -n $EXISTING_HELPER ]] && opts+=("Use installed $EXISTING_HELPER|already on this system|$EXISTING_HELPER")
+    [[ $EXISTING_HELPER != paru ]] && opts+=("paru|fast · written in Rust|paru")
+    [[ $EXISTING_HELPER != yay ]] && opts+=("yay|popular · written in Go|yay")
+    opts+=("None|skip the AUR|none")
     cur=$AUR_HELPER; [[ $cur == auto ]] && cur="$(default_helper)"
-    for label in "${opts[@]}"; do [[ ${label##*|} == "$cur" ]] && cur_label="${label%|*}"; done
     while true; do
         screen "Extras" "AUR helper" "$sub"
         [[ -n $errmsg ]] && err_line "$errmsg"
-        footer "↑↓" "move" "enter" "select" "esc" "quit"
-        pick="$(gchoose --selected "$cur_label" -- "${opts[@]}")" || cancelled
-        if [[ $pick == none ]] && needs_aur; then
-            errmsg="$(aur_comp_names) needs an AUR helper. Pick one or go back later to drop it."
-            continue
+        nav_footer "enter" "select"
+        menu 9 "$cur" "${opts[@]}" || return 2
+        if [[ $ANSWER == none ]] && needs_aur; then
+            errmsg="$(aur_comp_names) needs a helper. Pick one, or go back and untick it."
+            cur=none; continue
         fi
-        AUR_HELPER=$pick; break
+        AUR_HELPER=$ANSWER; return 0
     done
 }
 
-scr_components() {
-    local opts=(
-        "Apps for the keybinds     terminal · files · browser|apps"
-        "Noctalia Greeter          login screen with greetd|greeter"
-        "Type-to-launch            type in overview to open the launcher|launch"
-        "Polkit agent              Noctalia asks for app passwords|polkit"
-    )
-    [[ $IS_LAPTOP -eq 1 ]] && lid_supported && opts+=("Lid lock                  lock before suspend on lid close|lid")
-    local sel=() o
-    for o in "${opts[@]}"; do
-        case "${o##*|}" in
-            apps) [[ $INSTALL_APPS -eq 1 ]] && sel+=("${o%|*}") ;;
-            greeter) [[ $INSTALL_GREETER -eq 1 ]] && sel+=("${o%|*}") ;;
-            launch) [[ $TYPE_TO_LAUNCH -eq 1 ]] && sel+=("${o%|*}") ;;
-            polkit) [[ $POLKIT_AGENT -eq 1 ]] && sel+=("${o%|*}") ;;
-            lid) [[ $LID_FIX -eq 1 ]] && sel+=("${o%|*}") ;;
-        esac
-    done
-    local IFS_old=$IFS; IFS=,; local selected="${sel[*]}"; IFS=$IFS_old
-
-    screen "Extras" "Choose your extras" "Noctalia, portals, audio and fonts are always installed."
-    footer "↑↓" "move" "space" "toggle" "enter" "continue" "esc" "quit"
-    local picked
-    picked="$(gchoose --no-limit --selected "$selected" --selected.foreground "$(gc secondary)" \
-        --cursor-prefix "${SYM_OFF} " --unselected-prefix "${SYM_OFF} " --selected-prefix "${SYM_ON} " \
-        -- "${opts[@]}")" || cancelled
-    INSTALL_APPS=0; INSTALL_GREETER=0; TYPE_TO_LAUNCH=0; POLKIT_AGENT=0; LID_FIX=0
-    while read -r o; do
-        case "$o" in
-            apps) INSTALL_APPS=1 ;; greeter) INSTALL_GREETER=1 ;; launch) TYPE_TO_LAUNCH=1 ;;
-            polkit) POLKIT_AGENT=1 ;; lid) LID_FIX=1 ;;
-        esac
-    done <<< "$picked"
+p_term() {
+    screen "Apps" "Terminal" "Opens with Mod+Return. Always installed."
+    nav_footer "enter" "select"
+    menu 9 "$TERM_APP" \
+        "Alacritty|fast and simple · GPU accelerated|alacritty" \
+        "Kitty|GPU · tabs · inline images|kitty" \
+        "Foot|tiny and Wayland-native|foot" \
+        "Ghostty|modern and GPU accelerated|ghostty" \
+        "WezTerm|GPU with a built-in multiplexer|wezterm" || return 2
+    TERM_APP=$ANSWER
 }
 
-pick_app() {  # pick_app "Title" "Subtitle" current "Label|value"...
-    local title="$1" sub="$2" cur="$3"; shift 3
-    local o cur_label=""
-    for o in "$@"; do [[ ${o##*|} == "$cur" ]] && cur_label="${o%|*}"; done
-    screen "Apps" "$title" "$sub"
-    footer "↑↓" "move" "enter" "select" "esc" "quit"
-    gchoose --selected "$cur_label" -- "$@"
+p_fm() {
+    [[ $INSTALL_APPS -eq 1 ]] || return 3
+    screen "Apps" "File manager" "Opens with Mod+E."
+    nav_footer "enter" "select"
+    menu 9 "$FM_APP" \
+        "Nautilus|GNOME Files|nautilus" \
+        "Thunar|Xfce · lightweight|thunar" \
+        "Dolphin|KDE · feature-rich|dolphin" \
+        "Nemo|Cinnamon|nemo" \
+        "None|leave Mod+E unbound|none" || return 2
+    FM_APP=$ANSWER
 }
 
-scr_apps() {
-    TERM_APP="$(pick_app "Terminal" "Opens with Mod+Return. Always installed." "$TERM_APP" \
-        "Alacritty   fast and simple, GPU accelerated|alacritty" \
-        "Kitty       GPU, tabs, inline images|kitty" \
-        "Foot        tiny and Wayland-native|foot" \
-        "Ghostty     modern and GPU accelerated|ghostty" \
-        "WezTerm     GPU with a built-in multiplexer|wezterm")" || cancelled
-    [[ $INSTALL_APPS -eq 1 ]] || return 0
-    FM_APP="$(pick_app "File manager" "Opens with Mod+E." "$FM_APP" \
-        "Nautilus    GNOME Files|nautilus" \
-        "Thunar      Xfce, lightweight|thunar" \
-        "Dolphin     KDE, feature-rich|dolphin" \
-        "Nemo        Cinnamon|nemo" \
-        "None        leave Mod+E unbound|none")" || cancelled
-    BROWSER_APP="$(pick_app "Browser" "Opens with Mod+B." "$BROWSER_APP" \
-        "Firefox     Mozilla|firefox" \
-        "Chromium    open-source Chrome|chromium" \
-        "None        leave Mod+B unbound|none")" || cancelled
+p_browser() {
+    [[ $INSTALL_APPS -eq 1 ]] || return 3
+    screen "Apps" "Browser" "Opens with Mod+B."
+    nav_footer "enter" "select"
+    menu 9 "$BROWSER_APP" \
+        "Firefox|Mozilla|firefox" \
+        "Chromium|open-source Chrome|chromium" \
+        "None|leave Mod+B unbound|none" || return 2
+    BROWSER_APP=$ANSWER
 }
 
-scr_keyboard() {
+p_keyboard() {
     local errmsg=""
     while true; do
         screen "Keyboard" "Keyboard layout" "xkb layout(s), comma separated. Examples: us  de  fr  us,ru"
         [[ -n $errmsg ]] && err_line "$errmsg"
-        footer "enter" "continue" "esc" "quit"
-        KB_LAYOUT="$(ginput "us" "$KB_LAYOUT")" || cancelled
-        [[ $KB_LAYOUT =~ ^[a-z]{2,}(,[a-z]{2,})*$ ]] && break
-        errmsg="'$KB_LAYOUT' doesn't look like an xkb layout list."
+        footer "enter" "continue" "$BKSP_KEY" "back (when empty)" "esc" "quit"
+        text_input 9 "$KB_LAYOUT" "us" || return 2
+        if [[ $ANSWER =~ ^[a-z]{2,}(,[a-z]{2,})*$ ]]; then KB_LAYOUT=$ANSWER; return 0; fi
+        errmsg="'$ANSWER' doesn't look like an xkb layout list."
     done
 }
 
-scr_dm() {
-    SWITCH_DM=1
-    [[ $INSTALL_GREETER -eq 1 && -n $CURRENT_DM ]] || return 0
+p_dm() {
+    [[ $INSTALL_GREETER -eq 1 && -n $CURRENT_DM ]] || { SWITCH_DM=1; return 3; }
     screen "Review" "Replace $CURRENT_DM?" "Two login managers can't run together."
     card 9 \
         "${X}${CURRENT_DM}${R} ${D}is your current login manager. Replacing it disables${R}" \
         "${D}it and enables greetd with Noctalia Greeter after the next reboot.${R}" \
         "${D}Your current session keeps running.${R}"
-    at 15 1
-    footer "↑↓" "move" "enter" "select" "esc" "quit"
-    local pick
-    pick="$(gchoose -- "Replace it with Noctalia Greeter|yes" "Keep $CURRENT_DM (greeter installed, not enabled)|no")" || cancelled
-    [[ $pick == yes ]] && SWITCH_DM=1 || SWITCH_DM=0
+    nav_footer "enter" "select"
+    menu 15 "$([[ $SWITCH_DM -eq 1 ]] && echo yes || echo no)" \
+        "Replace it|use Noctalia Greeter|yes" \
+        "Keep $CURRENT_DM|the greeter is installed but not enabled|no" || return 2
+    [[ $ANSWER == yes ]] && SWITCH_DM=1 || SWITCH_DM=0
 }
 
-yesno_chip() { if [[ $1 -eq 1 ]]; then out "${T}${SYM_DONE} on ${R}"; else out "${D}${SYM_TODO} off${R}"; fi; }
-
-scr_review() {
+p_review() {
+    [[ $AUR_HELPER == auto ]] && AUR_HELPER="$(default_helper)"
     screen "Review" "Ready to install" "Check your choices. Nothing has changed yet."
-    local user_txt="$TARGET_USER" apps_txt="$TERM_APP" greeter_txt
+    local user_txt="$TARGET_USER" apps_txt="$TERM_APP" greeter_txt desk_txt aur_txt
     [[ $CREATE_USER -eq 1 ]] && user_txt="$TARGET_USER ${D}(new, sudo)${R}"
     [[ $INSTALL_APPS -eq 1 ]] && apps_txt="$TERM_APP, $FM_APP, $BROWSER_APP"
     if [[ $INSTALL_GREETER -eq 0 ]]; then greeter_txt="${D}off${R}"
     elif [[ -n $CURRENT_DM && $SWITCH_DM -eq 0 ]]; then greeter_txt="installed ${D}(keeps $CURRENT_DM)${R}"
     elif [[ -n $CURRENT_DM ]]; then greeter_txt="Noctalia Greeter ${D}(replaces $CURRENT_DM)${R}"
     else greeter_txt="Noctalia Greeter"; fi
-
-    local desk_txt aur_txt
     desk_txt="$(comp_names)"
     if (( ${#desk_txt} > 50 )); then desk_txt="$(comp_field "${COMPS[0]}" 2), $(comp_field "${COMPS[1]}" 2) ${D}+$(( ${#COMPS[@]} - 2 )) more${R}"; fi
     case $AUR_HELPER in
@@ -602,10 +713,10 @@ scr_review() {
         "$EXISTING_HELPER") aur_txt="$AUR_HELPER ${D}(already installed)${R}" ;;
         *) aur_txt="$AUR_HELPER ${D}(will be installed)${R}" ;;
     esac
-    local on="${T}${SYM_DONE} on${R}" off="${D}${SYM_TODO} off${R}" tl pa ll
-    [[ $TYPE_TO_LAUNCH -eq 1 ]] && tl=$on || tl=$off
-    [[ $POLKIT_AGENT -eq 1 ]] && pa=$on || pa=$off
-    [[ $LID_FIX -eq 1 ]] && ll=$on || ll=$off
+    local yes_chip="${T}${SYM_DONE} on${R}" off="${D}${SYM_TODO} off${R}" tl pa ll
+    [[ $TYPE_TO_LAUNCH -eq 1 ]] && tl=$yes_chip || tl=$off
+    [[ $POLKIT_AGENT -eq 1 ]] && pa=$yes_chip || pa=$off
+    [[ $LID_FIX -eq 1 ]] && ll=$yes_chip || ll=$off
     card 8 \
         "${D}User        ${R}${X}${user_txt}${R}" \
         "${D}Desktop     ${R}${X}${desk_txt}${R}" \
@@ -615,29 +726,40 @@ scr_review() {
         "${D}Keyboard    ${R}${X}${KB_LAYOUT}${R}" \
         "${D}Login       ${R}${X}${greeter_txt}${R}" \
         "${D}Extras      ${R}${D}type-to-launch${R} ${tl}   ${D}polkit${R} ${pa}   ${D}lid lock${R} ${ll}"
-    at 19 1
-    footer "↑↓" "move" "enter" "select" "esc" "quit"
-    local pick
-    pick="$(gchoose --height 3 -- "Install now|install" "Change my choices|change" "Quit|quit")" || cancelled
-    case "$pick" in
+    nav_footer "enter" "select"
+    menu 19 install \
+        "Install now|start the installation|install" \
+        "Change my choices|back to the compositor list|change" \
+        "Quit|leave without changing anything|quit" || return 2
+    case $ANSWER in
         install) return 0 ;;
-        change)  return 1 ;;
+        change)  return 4 ;;
         *)       cancelled ;;
     esac
 }
 
+# Wizard: Backspace walks back through the pages, skipping hidden ones.
+PAGES=(p_welcome p_user p_newname p_newpass p_desktop p_extras p_aur p_term p_fm p_browser p_keyboard p_dm p_review)
 tui_decisions() {
-    scr_welcome
-    scr_user
-    while true; do
-        scr_desktop
-        scr_components
-        scr_aur
-        scr_apps
-        scr_keyboard
-        scr_dm
-        scr_review && break
+    if [[ $IS_ROOT -eq 1 && -n $TARGET_USER ]]; then
+        if id "$TARGET_USER" &>/dev/null; then USER_PRESET=1; else CREATE_USER=1; fi
+    fi
+    [[ $IS_ROOT -eq 0 ]] && TARGET_USER="$(id -un)"
+    # Start the compositor list unticked, so Enter picks the highlighted one.
+    [[ $COMPS_FROM_FLAG -eq 0 ]] && COMPS=()
+    local i=0 dir=1 rc desktop_i=0 j
+    for j in "${!PAGES[@]}"; do [[ ${PAGES[j]} == p_desktop ]] && desktop_i=$j; done
+    while (( i < ${#PAGES[@]} )); do
+        if "${PAGES[i]}"; then rc=0; else rc=$?; fi
+        case $rc in
+            0) dir=1; i=$(( i + 1 )) ;;
+            2) dir=-1; i=$(( i - 1 )) ;;
+            3) i=$(( i + dir )) ;;
+            4) dir=1; i=$desktop_i ;;
+        esac
+        (( i < 0 )) && { i=0; dir=1; }
     done
+    return 0   # the loop's last test is usually false; don't let set -e see that
 }
 
 plain_decisions() {
@@ -1092,7 +1214,7 @@ scr_failed() {
     while IFS= read -r l; do lines+=("${D}${l}${R}"); done < <(log_tail 9)
     card 8 "${X}Last lines of the log${R}" "" "${lines[@]}"
     at 21 5; out "${D}Full log: ${X}${LOG}${R}"
-    press_continue 22 "Exit"
+    press_continue 22 "Exit" 0
 }
 
 scr_done() {
@@ -1127,12 +1249,11 @@ scr_done() {
     fi
     at "$row" 1
     if [[ $GREETER_ENABLED -eq 1 ]]; then
-        footer "↑↓" "move" "enter" "select" "esc" "exit"
-        local pick
-        pick="$(gchoose --height 2 -- "Reboot now|reboot" "Exit to the shell|exit")" || pick="exit"
-        if [[ $pick == reboot ]]; then ui_restore; as_root systemctl reboot; fi
+        footer "↑↓" "move" "enter" "select"
+        menu "$row" reboot "Reboot now|start Noctalia Greeter|reboot" "Exit to the shell|reboot later yourself|exit" || ANSWER="exit"
+        if [[ $ANSWER == reboot ]]; then ui_restore; as_root systemctl reboot; fi
     else
-        press_continue "$row" "Exit"
+        press_continue "$row" "Exit" 0
     fi
 }
 

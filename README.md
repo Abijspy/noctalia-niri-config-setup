@@ -22,14 +22,14 @@ cd noctalia-niri-config-setup
 
 ## The installer
 
-The installer is a full-screen terminal UI built with [gum](https://github.com/charmbracelet/gum). It uses the colors of Noctalia's built-in palette: navy surface, yellow primary, lavender secondary and mint accents. If gum is missing, the installer installs it first. On a bare Linux console it temporarily switches the console to the Noctalia palette and uses symbols the console font can draw. The original palette comes back when the installer exits.
+The installer is a full-screen terminal UI written in plain bash, so it needs nothing extra on a minimal install. It uses the colors of Noctalia's built-in palette: navy surface, yellow primary, lavender secondary and mint accents. On a bare Linux console it temporarily switches the console to the Noctalia palette and uses symbols the console font can draw. The original palette comes back when the installer exits.
 
 | | |
 |---|---|
 | ![Choosing compositors](docs/screenshots/desktop.png) | ![Choosing an AUR helper](docs/screenshots/aur.png) |
 | **Desktop:** pick one or more compositors | **AUR helper:** paru, yay, an installed one, or none |
 | ![Choosing extras](docs/screenshots/components.png) | ![Choosing a terminal](docs/screenshots/apps.png) |
-| **Extras:** greeter, type-to-launch, polkit agent | **Apps:** terminal, file manager and browser |
+| **Extras:** greeter, type-to-launch, polkit agent, apps | **Apps:** terminal, file manager and browser |
 | ![Review screen](docs/screenshots/review.png) | ![Installing](docs/screenshots/installing.png) |
 | **Review:** nothing changes until you choose *Install now* | **Install:** live steps, progress bar and the latest log lines |
 
@@ -45,17 +45,18 @@ On a minimal install, straight from the TTY:
 
 | Key | Action |
 |---|---|
-| `↑` / `↓` | Move between options |
+| `↑` / `↓` | Move between options (`Home` / `End` jump to the first / last) |
 | `Enter` | Continue (picks the highlighted option) |
 | `Space` | Tick or untick an item on the Desktop and Extras screens |
+| `Backspace` or `←` | Go back to the previous page. In a text field, Backspace deletes first and goes back once the field is empty |
 | `Esc` | Quit the installer. Nothing changes before you choose *Install now* |
 
 **Screens**
 
 1. **Welcome:** shows whether it found a laptop and an existing login manager.
 2. **User:** only when run as root. Pick an existing user or create a new one. A new user is added to `wheel`, and `sudo` is installed and enabled for that group.
-3. **Desktop:** choose one or more compositors. Each one gets its own config, and with Noctalia Greeter you pick between them at login.
-4. **Extras:** Noctalia Greeter, overview type-to-launch, Noctalia's polkit agent, and the lid-close lock (laptops only, and only with niri, Sway or Scroll). Then the **AUR helper**:
+3. **Desktop:** choose one or more compositors. Press Enter to take the highlighted one, or tick several with Space first. Each one gets its own config, and with Noctalia Greeter you pick between them at login.
+4. **Extras:** Noctalia Greeter, overview type-to-launch, Noctalia's polkit agent, file manager and browser, and the lid-close lock (laptops only, and only with niri, Sway or Scroll). Then the **AUR helper**:
    - keep yay or paru if one is already installed, install **paru** or **yay**, or skip it;
    - Scroll and Umbriel are only in the AUR, so they need a helper.
 5. **Apps:** terminal (alacritty, kitty, foot, ghostty or wezterm), file manager (nautilus, thunar, dolphin, nemo or none) and browser (firefox, chromium or none). The keybinds in every config are updated to match.
