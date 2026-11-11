@@ -8,6 +8,7 @@
 #    ./install.sh --yes           # no prompts (accept defaults)
 #    ./install.sh --no-apps       # skip terminal/browser/file manager
 #    ./install.sh --lid-fix       # also set HandleLidSwitch=ignore in logind
+#    ./install.sh --no-greeter    # skip Noctalia Greeter + greetd setup
 #
 #  Or straight from GitHub:
 #    curl -fsSL https://raw.githubusercontent.com/Abijspy/noctalia-niri-config-setup/main/install.sh | bash
@@ -21,13 +22,16 @@ NOCTALIA_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/noctalia"
 ASSUME_YES=0
 INSTALL_APPS=1
 LID_FIX=0
+INSTALL_GREETER=1
+GREETD_CONF="/etc/greetd/config.toml"
 
 for arg in "$@"; do
     case "$arg" in
-        -y|--yes)   ASSUME_YES=1 ;;
-        --no-apps)  INSTALL_APPS=0 ;;
-        --lid-fix)  LID_FIX=1 ;;
-        -h|--help)  sed -n '2,15p' "$0"; exit 0 ;;
+        -y|--yes)     ASSUME_YES=1 ;;
+        --no-apps)    INSTALL_APPS=0 ;;
+        --lid-fix)    LID_FIX=1 ;;
+        --no-greeter) INSTALL_GREETER=0 ;;
+        -h|--help)    sed -n '2,16p' "$0"; exit 0 ;;
         *) echo "Unknown option: $arg"; exit 1 ;;
     esac
 done
@@ -145,15 +149,116 @@ if compgen -G "/sys/class/power_supply/BAT*" >/dev/null; then
     fi
 fi
 
+# ---------- Noctalia Greeter + greetd ----------
+aur_install() {  # aur_install pkg — uses paru or yay if present
+    local helper
+    for helper in paru yay; do
+        if command -v "$helper" >/dev/null; then
+            "$helper" -S --needed --noconfirm "$@"
+            return
+        fi
+    done
+    return 1
+}
+
+# Set `key = "value"` inside [default_session] of greetd's config,
+# keeping every other line/section untouched.
+greetd_set() {  # greetd_set key value
+    local key="$1" val="$2" tmp
+    tmp="$(mktemp)"
+    sudo cat "$GREETD_CONF" | awk -v key="$key" -v val="$val" '
+        BEGIN { in_ds = 0; done = 0; seen = 0 }
+        /^[[:space:]]*\[.*\][[:space:]]*$/ {
+            if (in_ds && !done) { print key " = \"" val "\""; done = 1 }
+            in_ds = ($0 ~ /^[[:space:]]*\[default_session\][[:space:]]*$/)
+            if (in_ds) seen = 1
+            print; next
+        }
+        in_ds && $0 ~ "^[[:space:]]*#?[[:space:]]*" key "[[:space:]]*=" {
+            if (!done) { print key " = \"" val "\""; done = 1 }
+            next
+        }
+        { print }
+        END {
+            if (in_ds && !done) { print key " = \"" val "\""; done = 1 }
+            if (!seen) { print ""; print "[default_session]"; print key " = \"" val "\"" }
+        }
+    ' > "$tmp"
+    sudo install -m 644 "$tmp" "$GREETD_CONF"
+    rm -f "$tmp"
+}
+
+if [[ $INSTALL_GREETER -eq 1 ]] && ask "Install Noctalia Greeter (login screen) with greetd?" y; then
+    info "Installing greetd + Noctalia Greeter"
+    sudo pacman -S --needed --noconfirm greetd polkit
+
+    # noctalia-greeter is moving AUR -> [extra]; it may still be in
+    # [extra-testing] or the AUR depending on when you run this.
+    if pacman -Si noctalia-greeter &>/dev/null; then
+        sudo pacman -S --needed --noconfirm noctalia-greeter
+    elif aur_install noctalia-greeter || aur_install noctalia-greeter-git; then
+        :
+    else
+        die "noctalia-greeter isn't in your enabled repos and no AUR helper (paru/yay) was found.
+    Install it manually (enable [extra-testing] or use an AUR helper), then re-run with --yes."
+    fi
+    ok "noctalia-greeter installed"
+
+    GREETER_SESSION="$(command -v noctalia-greeter-session || echo /usr/bin/noctalia-greeter-session)"
+    [[ -x $GREETER_SESSION ]] || die "noctalia-greeter-session not found at $GREETER_SESSION"
+
+    # greetd config: merge into [default_session], don't overwrite the file.
+    sudo mkdir -p /etc/greetd
+    if [[ -f $GREETD_CONF ]]; then
+        sudo cp "$GREETD_CONF" "$GREETD_CONF.bak.$(date +%Y%m%d-%H%M%S)"
+        ok "Backed up $GREETD_CONF"
+    else
+        printf '[terminal]\nvt = 1\n\n[default_session]\n' | sudo tee "$GREETD_CONF" >/dev/null
+    fi
+    greetd_set command "$GREETER_SESSION"
+    greetd_set user "greeter"
+    ok "greetd now starts $GREETER_SESSION as user 'greeter'"
+
+    # State dir (/var/lib/noctalia-greeter) via the shipped tmpfiles rule,
+    # then create greeter.toml + sync.toml.
+    id greeter &>/dev/null || die "User 'greeter' doesn't exist (it should come with the greetd package)."
+    sudo systemd-tmpfiles --create
+    sudo noctalia-greeter-apply-appearance --setup-system \
+        && ok "Greeter config initialised (greeter.toml, sync.toml)" \
+        || warn "noctalia-greeter-apply-appearance --setup-system failed — run it manually later."
+
+    # Switch display manager. Only `disable` (no --now) so we don't kill
+    # the session you're running this from; the switch happens on reboot.
+    CURRENT_DM="$(basename "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null)" 2>/dev/null || true)"
+    if [[ -n $CURRENT_DM && $CURRENT_DM != "display-manager.service" && $CURRENT_DM != "greetd.service" ]]; then
+        if ask "Disable current display manager ($CURRENT_DM) and use greetd?" y; then
+            sudo systemctl disable "$CURRENT_DM"
+            ok "Disabled $CURRENT_DM"
+        else
+            warn "Leaving $CURRENT_DM enabled — greetd won't be enabled (two DMs would fight)."
+            INSTALL_GREETER=0
+        fi
+    fi
+    if [[ $INSTALL_GREETER -eq 1 ]]; then
+        sudo systemctl enable greetd.service
+        ok "greetd enabled — Noctalia Greeter will appear after reboot"
+        GREETER_DONE=1
+    fi
+fi
+
 # ---------- done ----------
 echo
 ok "All done."
+if [[ ${GREETER_DONE:-0} -eq 1 ]]; then
+    LOGIN_HINT="Reboot. Noctalia Greeter will show up — pick the \"Niri\" session and log in."
+else
+    LOGIN_HINT="Log out and pick \"Niri\" in your display manager, or from a TTY run:  niri-session"
+fi
 cat <<EOF
 
   Next steps
   ----------
-  • Log out and pick "Niri" in your display manager,
-    or from a TTY run:  niri-session
+  • $LOGIN_HINT
   • Noctalia starts automatically (spawn-at-startup "noctalia").
   • Mod+Space  launcher        Mod+S  control center
     Mod+Shift+Comma  Noctalia settings    Mod+Shift+/  all keybinds

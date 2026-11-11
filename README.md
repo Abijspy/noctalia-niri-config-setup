@@ -23,6 +23,16 @@ curl -fsSL https://raw.githubusercontent.com/Abijspy/noctalia-niri-config-setup/
 3. Writes `~/.config/noctalia/10-niri.toml`, which lets you type in niri's overview to open the launcher.
 4. Runs `niri validate`.
 5. On a laptop, it can optionally set `HandleLidSwitch=ignore`, so Noctalia locks the screen before suspending.
+6. Installs **Noctalia Greeter** and **greetd**:
+   - It installs `noctalia-greeter` from the official repos. If it isn't there yet, it falls back to the AUR through `paru` or `yay`.
+   - It points greetd at the greeter by merging these lines into `[default_session]` in `/etc/greetd/config.toml`. It backs up that file first and leaves the rest of it unchanged.
+     ```toml
+     [default_session]
+     command = "/usr/bin/noctalia-greeter-session"
+     user = "greeter"
+     ```
+   - It runs `noctalia-greeter-apply-appearance --setup-system`, which creates `greeter.toml` and `sync.toml`.
+   - It disables your current display manager (gdm, sddm or lightdm) and enables `greetd`. Neither service is stopped now, so your running session stays up. The switch happens when you reboot.
 
 ### Options
 
@@ -31,6 +41,9 @@ curl -fsSL https://raw.githubusercontent.com/Abijspy/noctalia-niri-config-setup/
 | `--yes` | No prompts |
 | `--no-apps` | Skip alacritty / nautilus / firefox |
 | `--lid-fix` | Apply the logind lid setting without asking |
+| `--no-greeter` | Skip Noctalia Greeter and greetd |
+
+> If the greeter doesn't appear after you reboot, switch to a TTY (`Ctrl+Alt+F2`) and run `systemctl status greetd`.
 
 ## Manual install
 
