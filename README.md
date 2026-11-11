@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/Abijspy/noctalia-niri-config-setup/
 4. Runs `niri validate`.
 5. On a laptop, it can optionally set `HandleLidSwitch=ignore`, so Noctalia locks the screen before suspending.
 6. Installs **Noctalia Greeter** and **greetd**:
-   - It installs `noctalia-greeter` from the official repos. If it isn't there yet, it falls back to the AUR through `paru` or `yay`.
+   - It installs `noctalia-greeter` from `[extra]`, which also pulls in `greetd`. It installs `polkit` too, so Noctalia can sync your wallpaper and colours to the login screen.
    - It points greetd at the greeter by merging these lines into `[default_session]` in `/etc/greetd/config.toml`. It backs up that file first and leaves the rest of it unchanged.
      ```toml
      [default_session]

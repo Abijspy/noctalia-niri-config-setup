@@ -150,17 +150,6 @@ if compgen -G "/sys/class/power_supply/BAT*" >/dev/null; then
 fi
 
 # ---------- Noctalia Greeter + greetd ----------
-aur_install() {  # aur_install pkg — uses paru or yay if present
-    local helper
-    for helper in paru yay; do
-        if command -v "$helper" >/dev/null; then
-            "$helper" -S --needed --noconfirm "$@"
-            return
-        fi
-    done
-    return 1
-}
-
 # Set `key = "value"` inside [default_session] of greetd's config,
 # keeping every other line/section untouched.
 greetd_set() {  # greetd_set key value
@@ -189,19 +178,9 @@ greetd_set() {  # greetd_set key value
 }
 
 if [[ $INSTALL_GREETER -eq 1 ]] && ask "Install Noctalia Greeter (login screen) with greetd?" y; then
-    info "Installing greetd + Noctalia Greeter"
-    sudo pacman -S --needed --noconfirm greetd polkit
-
-    # noctalia-greeter is moving AUR -> [extra]; it may still be in
-    # [extra-testing] or the AUR depending on when you run this.
-    if pacman -Si noctalia-greeter &>/dev/null; then
-        sudo pacman -S --needed --noconfirm noctalia-greeter
-    elif aur_install noctalia-greeter || aur_install noctalia-greeter-git; then
-        :
-    else
-        die "noctalia-greeter isn't in your enabled repos and no AUR helper (paru/yay) was found.
-    Install it manually (enable [extra-testing] or use an AUR helper), then re-run with --yes."
-    fi
+    info "Installing Noctalia Greeter (pulls in greetd) from [extra]"
+    # polkit: lets Noctalia sync wallpaper/palette to the greeter.
+    sudo pacman -S --needed --noconfirm noctalia-greeter polkit
     ok "noctalia-greeter installed"
 
     GREETER_SESSION="$(command -v noctalia-greeter-session || echo /usr/bin/noctalia-greeter-session)"
