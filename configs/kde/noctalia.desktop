@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Noctalia
+Comment=Noctalia v5 shell
+Exec=noctalia
+X-KDE-autostart-phase=2

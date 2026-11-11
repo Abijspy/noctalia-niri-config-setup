@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Labwc + Noctalia v5 - ~/.config/labwc/rc.xml
+  Noctalia snippets follow
+  https://docs.noctalia.dev/noctalia/compositor-settings/labwc/
+-->
+<labwc_config>
+  <core>
+    <gap>10</gap>
+  </core>
+
+  <!-- Thumbnail-based window switcher -->
+  <windowSwitcher preview="no" outlines="yes">
+    <osd style="thumbnail"/>
+  </windowSwitcher>
+
+  <keyboard>
+    <!-- Keep Labwc's default keybinds -->
+    <default />
+
+    <!-- Noctalia -->
+    <keybind key="W-space"><action name="Execute"><command>noctalia msg panel-toggle launcher</command></action></keybind>
+    <keybind key="W-s"><action name="Execute"><command>noctalia msg panel-toggle control-center</command></action></keybind>
+    <keybind key="W-comma"><action name="Execute"><command>noctalia msg settings-toggle</command></action></keybind>
+
+    <!-- Media keys -->
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute"><command>noctalia msg volume-up</command></action></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute"><command>noctalia msg volume-down</command></action></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute"><command>noctalia msg volume-mute</command></action></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute"><command>noctalia msg brightness-up</command></action></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute"><command>noctalia msg brightness-down</command></action></keybind>
+
+    <!-- Apps -->
+    <keybind key="W-Return"><action name="Execute"><command>alacritty</command></action></keybind>
+    <keybind key="W-e"><action name="Execute"><command>nautilus</command></action></keybind>
+    <keybind key="W-b"><action name="Execute"><command>firefox</command></action></keybind>
+
+    <!-- Windows -->
+    <keybind key="W-q"><action name="Close"/></keybind>
+    <keybind key="W-f"><action name="ToggleFullscreen"/></keybind>
+  </keyboard>
+</labwc_config>

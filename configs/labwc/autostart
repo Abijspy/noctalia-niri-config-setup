@@ -1,0 +1,2 @@
+# Labwc + Noctalia v5 - ~/.config/labwc/autostart (run by sh at startup)
+noctalia >/dev/null 2>&1 &

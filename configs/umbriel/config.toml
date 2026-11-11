@@ -1,0 +1,67 @@
+# =====================================================================
+#  Umbriel + Noctalia v5 — ~/.config/umbriel/config.toml
+#  Noctalia snippets follow
+#  https://docs.noctalia.dev/noctalia/compositor-settings/umbriel/
+#  Umbriel's own docs: https://docs.noctalia.dev/umbriel/
+# =====================================================================
+
+[general]
+# Runs once after startup (not on config reload).
+autostart = ["noctalia"]
+
+[appearance]
+prefer_no_csd = true
+border_width = 2
+corner_radius = 10
+
+[appearance.blur]
+enabled = true
+optimized = true
+passes = 2
+radius = 3
+noise = 0.02
+brightness = 0.9
+contrast = 0.9
+saturation = 1.1
+
+# Keep [animation.layers] disabled (the default): layer animations
+# conflict with Noctalia's own animations.
+
+# Blur all windows
+[[window_rule]]
+blur = true
+blur_optimized = true
+
+# Float Noctalia's settings window
+[[window_rule]]
+match.app_id = "^dev.noctalia.Noctalia$"
+default_floating = true
+default_size = [1020, 900]
+
+# Blur Noctalia's bar, panels, dock, notifications and OSD
+[[layer_rule]]
+match.namespace = "^noctalia-(bar-[^\"]+|notification|dock|panel|attached-panel|osd)$"
+blur = true
+blur_ignore_alpha = 0.6
+blur_optimized = false
+
+[keybinds]
+# Noctalia
+"Mod+Space" = "spawn noctalia msg panel-toggle launcher"
+"Mod+S" = "spawn noctalia msg panel-toggle control-center"
+"Mod+Comma" = "spawn noctalia msg settings-toggle"
+"Alt+Tab" = "spawn noctalia msg window-switcher hold"
+"Alt+Shift+Tab" = "spawn noctalia msg window-switcher hold reverse"
+"Mod+Shift+A" = "spawn noctalia msg screenshot-annotate"
+"Mod+Ctrl+A" = "spawn noctalia msg annotate"
+
+"XF86AudioRaiseVolume" = "spawn noctalia msg volume-up"
+"XF86AudioLowerVolume" = "spawn noctalia msg volume-down"
+"XF86AudioMute" = "spawn noctalia msg volume-mute"
+"XF86MonBrightnessUp" = "spawn noctalia msg brightness-up"
+"XF86MonBrightnessDown" = "spawn noctalia msg brightness-down"
+
+# Apps
+"Mod+Return" = "spawn alacritty"
+"Mod+E" = "spawn nautilus"
+"Mod+B" = "spawn firefox"

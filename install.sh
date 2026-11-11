@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # =====================================================================
-#  niri + Noctalia v5 installer for Arch Linux
+#  Noctalia v5 desktop installer for Arch Linux
 #  https://github.com/Abijspy/noctalia-niri-config-setup
 #
-#  A full-screen installer in Noctalia's colors. Works on a fresh
-#  minimal Arch install (bare TTY, even as root): it installs gum
-#  itself and repaints the console with the Noctalia palette.
+#  Sets up Noctalia on any compositor it supports: niri, Hyprland,
+#  Sway, Scroll, Mango, Labwc, Umbriel and KDE Plasma. A full-screen
+#  installer in Noctalia's colors that works on a fresh minimal Arch
+#  install (bare TTY, even as root). Can install yay or paru.
 #
 #  Usage:
 #    ./install.sh                     # TUI installer (default)
@@ -13,6 +14,8 @@
 #    ./install.sh --yes               # no prompts, accept defaults
 #
 #  Options (also preset the TUI choices):
+#    --compositors=niri,hyprland      # niri hyprland sway scroll mango labwc umbriel kde
+#    --aur-helper=auto|paru|yay|none  # auto: keep an installed one, else paru if needed
 #    --user=NAME                      # user to set up (when run as root)
 #    --terminal=alacritty|kitty|foot|ghostty|wezterm
 #    --file-manager=nautilus|thunar|dolphin|nemo|none
@@ -47,8 +50,10 @@ TERM_APP="alacritty"
 FM_APP="nautilus"
 BROWSER_APP="firefox"
 KB_LAYOUT="us"
+COMPOSITORS="niri"
+AUR_HELPER="auto"
 
-usage() { sed -n '3,27p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '3,30p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
 
 for arg in "$@"; do
     case "$arg" in
@@ -62,6 +67,8 @@ for arg in "$@"; do
         --file-manager=*)  FM_APP="${arg#*=}" ;;
         --browser=*)       BROWSER_APP="${arg#*=}" ;;
         --layout=*)        KB_LAYOUT="${arg#*=}" ;;
+        --compositors=*)   COMPOSITORS="${arg#*=}" ;;
+        --aur-helper=*)    AUR_HELPER="${arg#*=}" ;;
         -h|--help)         usage; exit 0 ;;
         *) echo "Unknown option: $arg (see --help)"; exit 1 ;;
     esac
@@ -76,6 +83,48 @@ check_opt terminal     "$TERM_APP"    alacritty kitty foot ghostty wezterm
 check_opt file-manager "$FM_APP"      nautilus thunar dolphin nemo none
 check_opt browser      "$BROWSER_APP" firefox chromium none
 [[ $KB_LAYOUT =~ ^[a-z]{2,}(,[a-z]{2,})*$ ]] || { echo "Invalid --layout=$KB_LAYOUT (e.g. us or us,de)"; exit 1; }
+check_opt aur-helper   "$AUR_HELPER"  auto paru yay none
+
+# ---------- compositors Noctalia supports ----------
+# id | name | repo packages | AUR packages | start command | description (no commas)
+COMP_TABLE=(
+    "niri|niri|niri xwayland-satellite xdg-desktop-portal-gnome||niri-session|scrollable tiling · blur · overview"
+    "hyprland|Hyprland|hyprland xdg-desktop-portal-hyprland xorg-xwayland||Hyprland|dynamic tiling · Lua config"
+    "sway|Sway|sway xdg-desktop-portal-wlr xorg-xwayland||sway|i3-style tiling"
+    "scroll|Scroll|xdg-desktop-portal-wlr xorg-xwayland|sway-scroll|scroll|Sway with a scrolling layout"
+    "mango|Mango|mangowm xdg-desktop-portal-wlr xorg-xwayland||mango|dwl-based tiling with tags"
+    "labwc|Labwc|labwc xdg-desktop-portal-wlr xorg-xwayland||labwc|stacking · Openbox-like"
+    "umbriel|Umbriel||umbriel-git|umbriel|Noctalia's own compositor"
+    "kde|KDE Plasma|plasma-desktop xdg-desktop-portal-kde||startplasma-wayland|full desktop · fewer Noctalia features"
+)
+comp_field() {  # comp_field ID FIELD_NUMBER
+    local row
+    for row in "${COMP_TABLE[@]}"; do
+        [[ ${row%%|*} == "$1" ]] && { cut -d'|' -f"$2" <<< "$row"; return 0; }
+    done
+    return 1
+}
+COMPS=()
+IFS=, read -ra COMPS <<< "$COMPOSITORS"
+(( ${#COMPS[@]} > 0 )) || { echo "--compositors needs at least one compositor"; exit 1; }
+for c in "${COMPS[@]}"; do
+    comp_field "$c" 1 >/dev/null || { echo "Unknown compositor '$c' (use: niri hyprland sway scroll mango labwc umbriel kde)"; exit 1; }
+done
+
+has_comp()      { local c; for c in "${COMPS[@]}"; do [[ $c == "$1" ]] && return 0; done; return 1; }
+needs_aur()     { local c; for c in "${COMPS[@]}"; do [[ -n $(comp_field "$c" 4) ]] && return 0; done; return 1; }
+aur_comp_names() { local c n=(); for c in "${COMPS[@]}"; do [[ -n $(comp_field "$c" 4) ]] && n+=("$(comp_field "$c" 2)"); done; local IFS=/; echo "${n[*]}"; }
+comp_names()    { local c n=(); for c in "${COMPS[@]}"; do n+=("$(comp_field "$c" 2)"); done; local IFS=,; echo "${n[*]}" | sed 's/,/, /g'; }
+# Lid lock is wired up only in configs that can bind the lid switch.
+lid_supported() { local c; for c in "${COMPS[@]}"; do case $c in niri|sway|scroll) ;; *) return 1 ;; esac; done; return 0; }
+
+EXISTING_HELPER=""
+for h in paru yay; do command -v "$h" >/dev/null && { EXISTING_HELPER=$h; break; }; done
+default_helper() {
+    if [[ -n $EXISTING_HELPER ]]; then echo "$EXISTING_HELPER"
+    elif needs_aur; then echo paru
+    else echo none; fi
+}
 
 # ---------- plain output helpers ----------
 c_blue=$'\e[1;34m'; c_green=$'\e[1;32m'; c_yellow=$'\e[1;33m'; c_red=$'\e[1;31m'; c_off=$'\e[0m'
@@ -90,8 +139,10 @@ ok()   { printf '%s ✓ %s %s\n' "$c_green" "$c_off" "$*"; }
 warn() { printf '%s !  %s %s\n' "$c_yellow" "$c_off" "$*"; echo "$*" >> "$WARN_FILE"; }
 die()  { printf '%s ✗  %s %s\n' "$c_red" "$c_off" "$*" >&2; exit 1; }
 
+SUDOERS_TMP="/etc/sudoers.d/99-noctalia-installer-tmp"
 cleanup() {
     [[ $UI == tui ]] && ui_restore
+    [[ $EUID -eq 0 && -f $SUDOERS_TMP ]] && rm -f "$SUDOERS_TMP"
     rm -rf "$TMP_DIR" "$WARN_FILE"
     [[ -n ${KEEPALIVE_PID:-} ]] && kill "$KEEPALIVE_PID" 2>/dev/null
     true
@@ -167,7 +218,7 @@ setup_theme() {
     if [[ $IS_CONSOLE -eq 1 ]]; then
         # The kernel console's font only has CP437-style glyphs.
         SYM_DONE="√"; SYM_CUR="►"; SYM_TODO="·"; SYM_BUL="•"; SYM_FAIL="x"
-        SYM_ARROW="»"; SYM_MOON=""; SYM_X="+"; SYM_ON="■"; SYM_OFF="·"
+        SYM_ARROW="»"; SYM_MOON=""; SYM_ON="■"; SYM_OFF="·"
         BX=(┌ ┐ └ ┘ ─ │); SPIN=('|' '/' '-' '\'); BAR_ON="█"; BAR_OFF="░"
         # Repaint the console palette with Noctalia (bright slots = same colors,
         # since the console shows bold text in the bright slot).
@@ -178,7 +229,7 @@ setup_theme() {
         done
     else
         SYM_DONE="✓"; SYM_CUR="●"; SYM_TODO="○"; SYM_BUL="•"; SYM_FAIL="✗"
-        SYM_ARROW="›"; SYM_MOON="☾ "; SYM_X="×"; SYM_ON="◉"; SYM_OFF="○"
+        SYM_ARROW="›"; SYM_MOON="☾ "; SYM_ON="◉"; SYM_OFF="○"
         BX=(╭ ╮ ╰ ╯ ─ │); SPIN=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏); BAR_ON="━"; BAR_OFF="━"
         # Ask xterm-compatible terminals to use Noctalia's surface/text colors.
         printf '\e]11;#%s\a\e]10;#%s\a' "${HEX[surface]}" "${HEX[text]}" >/dev/tty
@@ -207,23 +258,25 @@ STEPS=()
 build_steps() {
     STEPS=(Welcome)
     [[ $IS_ROOT -eq 1 ]] && STEPS+=(User)
-    STEPS+=(Components Apps Keyboard Review Install)
+    STEPS+=(Desktop Extras Apps Keyboard Review Install)
 }
 
 header() {  # header CURRENT_STEP_NAME
-    local cur="$1" line="" i name state seen=0
-    at 2 3; out "${P}${B}${SYM_MOON}noctalia${R} ${D}${SYM_X}${R} ${S}${B}niri${R}"
+    local cur="$1" line="" name state seen=0 GAP="  " total=0
+    for name in "${STEPS[@]}"; do total=$(( total + ${#name} + 4 )); done
+    (( total > COLS - 4 )) && GAP=" "   # tighten the tracker on narrow screens
+    at 2 3; out "${P}${B}${SYM_MOON}noctalia${R} ${S}${B}desktop${R}"
     local right="Arch Linux installer"
     at 2 $(( COLS - ${#right} - 2 )); out "${D}${right}${R}"
     at 3 3; out "${O}$(rep "─" $(( COLS - 4 )))${R}"
     for name in "${STEPS[@]}"; do
         if [[ $name == "$cur" ]]; then state=cur; seen=1
-        elif [[ $seen -eq 0 ]]; then state="done"
+        elif [[ $seen -eq 0 ]]; then state="done"   # also: every step when $cur isn't a step
         else state=todo; fi
         case $state in
-            done) line+="${T}${SYM_DONE}${R} ${D}${name}${R}  " ;;
-            cur)  line+="${P}${SYM_CUR}${R} ${X}${B}${name}${R}  " ;;
-            todo) line+="${O}${SYM_TODO}${R} ${D}${name}${R}  " ;;
+            done) line+="${T}${SYM_DONE}${R} ${D}${name}${R}${GAP}" ;;
+            cur)  line+="${P}${SYM_CUR}${R} ${X}${B}${name}${R}${GAP}" ;;
+            todo) line+="${O}${SYM_TODO}${R} ${D}${name}${R}${GAP}" ;;
         esac
     done
     at 4 3; out "$line"
@@ -330,20 +383,21 @@ existing_users() { getent passwd | awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nolo
 
 scr_welcome() {
     screen "Welcome" "" ""
-    at 7 5;  out "${P}${B}█▄ █ █▀█ █▀▀ ▀█▀ ▄▀█ █   █ ▄▀█${R}   ${S}${B}█▄ █ █ █▀█ █${R}"
-    at 8 5;  out "${P}${B}█ ▀█ █▄█ █▄▄  █  █▀█ █▄▄ █ █▀█${R}   ${S}${B}█ ▀█ █ █▀▄ █${R}"
-    at 10 5; out "${X}A complete Noctalia v5 desktop on the niri compositor.${R}"
+    at 7 5;  out "${P}${B}█▄ █ █▀█ █▀▀ ▀█▀ ▄▀█ █   █ ▄▀█${R}"
+    at 8 5;  out "${P}${B}█ ▀█ █▄█ █▄▄  █  █▀█ █▄▄ █ █▀█${R}"
+    at 10 5; out "${X}A complete Noctalia v5 desktop on the compositor you choose.${R}"
 
     local laptop dm
     [[ $IS_LAPTOP -eq 1 ]] && laptop="$(pill laptop "$BS")" || laptop="$(pill desktop "$BS")"
     [[ -n $CURRENT_DM ]] && dm="$(pill "$CURRENT_DM" "$BO" "$X")" || dm="$(pill "no login manager" "$BO" "$X")"
     card 12 \
-        "${P}${SYM_BUL}${R} ${X}niri${R}              ${D}scrollable tiling Wayland compositor${R}" \
         "${P}${SYM_BUL}${R} ${X}Noctalia v5${R}       ${D}bar, launcher, notifications, lock${R}" \
-        "${P}${SYM_BUL}${R} ${X}Blur everywhere${R}   ${D}ready-made niri config${R}" \
-        "${P}${SYM_BUL}${R} ${X}Noctalia Greeter${R}  ${D}optional login screen (greetd)${R}"
-    at 19 5; out "${D}Detected${R}  ${laptop} ${dm}"
-    at 20 5; out "${D}Nothing changes until you confirm the review.${R}"
+        "${P}${SYM_BUL}${R} ${X}8 compositors${R}     ${D}niri, Hyprland, Sway, Scroll, Mango, Labwc,${R}" \
+        "                    ${D}Umbriel or KDE Plasma, each preconfigured${R}" \
+        "${P}${SYM_BUL}${R} ${X}Noctalia Greeter${R}  ${D}optional login screen (greetd)${R}" \
+        "${P}${SYM_BUL}${R} ${X}yay or paru${R}       ${D}optional AUR helper${R}"
+    at 20 5; out "${D}Detected${R}  ${laptop} ${dm}"
+    at 21 5; out "${D}Nothing changes until you confirm the review.${R}"
     press_continue 22 "Get started"
 }
 
@@ -390,6 +444,53 @@ scr_user() {
     done
 }
 
+scr_desktop() {
+    local opts=() sel=() row id name aur desc label picked errmsg=""
+    for row in "${COMP_TABLE[@]}"; do
+        IFS='|' read -r id name _ aur _ desc <<< "$row"
+        label="$(printf '%-11s %s' "$name" "$desc")"
+        [[ -n $aur ]] && label+="  (AUR)"
+        opts+=("$label|$id")
+        has_comp "$id" && sel+=("$label")
+    done
+    while true; do
+        screen "Desktop" "Choose your compositor" "Pick one or more. Each gets a ready config with Noctalia set up."
+        [[ -n $errmsg ]] && err_line "$errmsg"
+        footer "↑↓" "move" "space" "toggle" "enter" "continue" "esc" "quit"
+        local IFS_old=$IFS; IFS=,; local selected="${sel[*]}"; IFS=$IFS_old
+        picked="$(gchoose --no-limit --selected "$selected" --selected.foreground "$(gc secondary)" \
+            --cursor-prefix "${SYM_OFF} " --unselected-prefix "${SYM_OFF} " --selected-prefix "${SYM_ON} " \
+            -- "${opts[@]}")" || cancelled
+        mapfile -t COMPS <<< "$picked"
+        [[ -n ${COMPS[0]:-} ]] && break
+        COMPS=(); errmsg="Pick at least one: tick it with Space, then press Enter."
+    done
+    lid_supported || LID_FIX=0
+}
+
+scr_aur() {
+    local sub opts=() cur label cur_label="" pick errmsg=""
+    if needs_aur; then sub="$(aur_comp_names) is only in the AUR, so it needs a helper."
+    else sub="Optional. Lets you install AUR packages later."; fi
+    [[ -n $EXISTING_HELPER ]] && opts+=("Use installed $EXISTING_HELPER   already on this system|$EXISTING_HELPER")
+    [[ $EXISTING_HELPER != paru ]] && opts+=("paru        fast · written in Rust|paru")
+    [[ $EXISTING_HELPER != yay ]] && opts+=("yay         popular · written in Go|yay")
+    opts+=("None        skip the AUR|none")
+    cur=$AUR_HELPER; [[ $cur == auto ]] && cur="$(default_helper)"
+    for label in "${opts[@]}"; do [[ ${label##*|} == "$cur" ]] && cur_label="${label%|*}"; done
+    while true; do
+        screen "Extras" "AUR helper" "$sub"
+        [[ -n $errmsg ]] && err_line "$errmsg"
+        footer "↑↓" "move" "enter" "select" "esc" "quit"
+        pick="$(gchoose --selected "$cur_label" -- "${opts[@]}")" || cancelled
+        if [[ $pick == none ]] && needs_aur; then
+            errmsg="$(aur_comp_names) needs an AUR helper. Pick one or go back later to drop it."
+            continue
+        fi
+        AUR_HELPER=$pick; break
+    done
+}
+
 scr_components() {
     local opts=(
         "Apps for the keybinds     terminal · files · browser|apps"
@@ -397,7 +498,7 @@ scr_components() {
         "Type-to-launch            type in overview to open the launcher|launch"
         "Polkit agent              Noctalia asks for app passwords|polkit"
     )
-    [[ $IS_LAPTOP -eq 1 ]] && opts+=("Lid lock                  lock before suspend on lid close|lid")
+    [[ $IS_LAPTOP -eq 1 ]] && lid_supported && opts+=("Lid lock                  lock before suspend on lid close|lid")
     local sel=() o
     for o in "${opts[@]}"; do
         case "${o##*|}" in
@@ -410,7 +511,7 @@ scr_components() {
     done
     local IFS_old=$IFS; IFS=,; local selected="${sel[*]}"; IFS=$IFS_old
 
-    screen "Components" "Choose your extras" "niri, Noctalia, portals, audio and fonts are always installed."
+    screen "Extras" "Choose your extras" "Noctalia, portals, audio and fonts are always installed."
     footer "↑↓" "move" "space" "toggle" "enter" "continue" "esc" "quit"
     local picked
     picked="$(gchoose --no-limit --selected "$selected" --selected.foreground "$(gc secondary)" \
@@ -493,19 +594,28 @@ scr_review() {
     elif [[ -n $CURRENT_DM ]]; then greeter_txt="Noctalia Greeter ${D}(replaces $CURRENT_DM)${R}"
     else greeter_txt="Noctalia Greeter"; fi
 
+    local desk_txt aur_txt
+    desk_txt="$(comp_names)"
+    if (( ${#desk_txt} > 50 )); then desk_txt="$(comp_field "${COMPS[0]}" 2), $(comp_field "${COMPS[1]}" 2) ${D}+$(( ${#COMPS[@]} - 2 )) more${R}"; fi
+    case $AUR_HELPER in
+        none) aur_txt="${D}none${R}" ;;
+        "$EXISTING_HELPER") aur_txt="$AUR_HELPER ${D}(already installed)${R}" ;;
+        *) aur_txt="$AUR_HELPER ${D}(will be installed)${R}" ;;
+    esac
     local on="${T}${SYM_DONE} on${R}" off="${D}${SYM_TODO} off${R}" tl pa ll
     [[ $TYPE_TO_LAUNCH -eq 1 ]] && tl=$on || tl=$off
     [[ $POLKIT_AGENT -eq 1 ]] && pa=$on || pa=$off
     [[ $LID_FIX -eq 1 ]] && ll=$on || ll=$off
     card 8 \
         "${D}User        ${R}${X}${user_txt}${R}" \
-        "${D}Core        ${R}${X}niri, noctalia, portals, pipewire, fonts${R}" \
-        "${D}            ${R}${D}runs a full system upgrade (pacman -Syu)${R}" \
+        "${D}Desktop     ${R}${X}${desk_txt}${R}" \
+        "${D}Core        ${R}${X}noctalia, portals, pipewire, fonts ${D}+ pacman -Syu${R}" \
+        "${D}AUR helper  ${R}${X}${aur_txt}${R}" \
         "${D}Apps        ${R}${X}${apps_txt}${R}" \
         "${D}Keyboard    ${R}${X}${KB_LAYOUT}${R}" \
         "${D}Login       ${R}${X}${greeter_txt}${R}" \
         "${D}Extras      ${R}${D}type-to-launch${R} ${tl}   ${D}polkit${R} ${pa}   ${D}lid lock${R} ${ll}"
-    at 18 1
+    at 19 1
     footer "↑↓" "move" "enter" "select" "esc" "quit"
     local pick
     pick="$(gchoose --height 3 -- "Install now|install" "Change my choices|change" "Quit|quit")" || cancelled
@@ -520,7 +630,9 @@ tui_decisions() {
     scr_welcome
     scr_user
     while true; do
+        scr_desktop
         scr_components
+        scr_aur
         scr_apps
         scr_keyboard
         scr_dm
@@ -548,7 +660,11 @@ plain_decisions() {
     }
     if [[ $INSTALL_GREETER -eq 1 ]]; then plain_ask "Install Noctalia Greeter (login screen) with greetd?" y || INSTALL_GREETER=0; fi
     if [[ $INSTALL_GREETER -eq 1 && -n $CURRENT_DM ]]; then plain_ask "Disable $CURRENT_DM and use greetd?" y || SWITCH_DM=0; fi
-    if [[ $IS_LAPTOP -eq 1 && $LID_FIX -eq 0 ]]; then plain_ask "Laptop detected. Lock before suspend on lid close?" n && LID_FIX=1; fi
+    if [[ $IS_LAPTOP -eq 1 && $LID_FIX -eq 0 ]] && lid_supported; then plain_ask "Laptop detected. Lock before suspend on lid close?" n && LID_FIX=1; fi
+    lid_supported || LID_FIX=0
+    [[ $AUR_HELPER == auto ]] && AUR_HELPER="$(default_helper)"
+    if [[ $AUR_HELPER == none ]] && needs_aur; then die "$(aur_comp_names) is only in the AUR: use --aur-helper=paru or yay."; fi
+    info "Compositors: $(comp_names) | AUR helper: $AUR_HELPER"
     info "User: $TARGET_USER | apps: $([[ $INSTALL_APPS -eq 1 ]] && echo "$TERM_APP $FM_APP $BROWSER_APP" || echo "$TERM_APP") | layout: $KB_LAYOUT"
     plain_ask "Continue with installation (includes pacman -Syu)?" y || die "Aborted."
 }
@@ -561,7 +677,10 @@ INSTALL_STEPS=()
 build_install_steps() {
     INSTALL_STEPS=()
     [[ $CREATE_USER -eq 1 ]] && INSTALL_STEPS+=("user|Create user $TARGET_USER")
-    INSTALL_STEPS+=("prep|Prepare niri config" "pkgs|Install packages" "files|Write niri and Noctalia config" "check|Validate config")
+    INSTALL_STEPS+=("pkgs|Install packages")
+    [[ $AUR_HELPER != none && $AUR_HELPER != "$EXISTING_HELPER" ]] && INSTALL_STEPS+=("helper|Install $AUR_HELPER")
+    needs_aur && INSTALL_STEPS+=("aur|Build $(aur_comp_names) from the AUR")
+    INSTALL_STEPS+=("files|Write $(comp_names | cut -c1-40) config" "check|Validate configs")
     [[ $LID_FIX -eq 1 ]] && INSTALL_STEPS+=("lid|Configure lid close")
     if [[ $INSTALL_GREETER -eq 1 ]]; then INSTALL_STEPS+=("greeter|Set up Noctalia Greeter" "dm|Enable the login screen"); fi
     return 0
@@ -636,6 +755,128 @@ greetd_set() {  # greetd_set key value
     rm -f "$tmp"
 }
 
+as_user() {  # run as the target user (needed for makepkg / AUR helpers)
+    if [[ $IS_ROOT -eq 1 ]]; then runuser -u "$TARGET_USER" -- env HOME="$TARGET_HOME" USER="$TARGET_USER" "$@"
+    else "$@"; fi
+}
+
+get_cfg() {  # get_cfg REPO_PATH DEST  — from the clone, or download it
+    if [[ -n $SCRIPT_DIR && -f $SCRIPT_DIR/configs/$1 ]]; then cp "$SCRIPT_DIR/configs/$1" "$2"
+    else curl -fsSL "$REPO_RAW/configs/$1" -o "$2" || die "Could not download configs/$1"; fi
+}
+
+# Swap the default apps in a config for the chosen ones; comment out
+# the line when "none" was chosen. STYLE: kdl lua hash xml
+apply_apps() {  # apply_apps FILE STYLE
+    local f=$1 style=$2 app def
+    sed -i "s/\balacritty\b/$TERM_APP/g" "$f"
+    for def in nautilus:$FM_APP firefox:$BROWSER_APP; do
+        app=${def#*:}; def=${def%%:*}
+        if [[ $app == none ]]; then
+            case $style in
+                kdl)  sed -i "/\b$def\b/ s|^|//|" "$f" ;;
+                lua)  sed -i "/\b$def\b/ s|^|-- |" "$f" ;;
+                hash) sed -i "/\b$def\b/ s|^|# |" "$f" ;;
+                xml)  sed -i "/\b$def\b/ s|^\(.*\)$|<!-- \1 -->|" "$f" ;;
+            esac
+        else
+            sed -i "s/\b$def\b/$app/g" "$f"
+        fi
+    done
+}
+
+place_user_file() {  # place_user_file SRC DEST — back up, then install for the user
+    mk_user_dir "$(dirname "$2")"
+    backup_if_exists "$2"
+    put_user_file "$1" "$2"
+    ok "Wrote $2"
+}
+
+write_comp_config() {  # write_comp_config ID
+    local id=$1 w="$TMP_DIR/cfg-$1"
+    mkdir -p "$w"
+    case $id in
+        niri)
+            get_cfg niri/config.kdl "$w/config.kdl"
+            sed -i "s/layout \"us\"/layout \"$KB_LAYOUT\"/" "$w/config.kdl"
+            apply_apps "$w/config.kdl" kdl
+            place_user_file "$w/config.kdl" "$CONFIG_HOME/niri/config.kdl" ;;
+        hyprland)
+            get_cfg hyprland/hyprland.lua "$w/hyprland.lua"
+            sed -i "s/kb_layout = \"us\"/kb_layout = \"$KB_LAYOUT\"/" "$w/hyprland.lua"
+            apply_apps "$w/hyprland.lua" lua
+            # Noctalia's Hyprland setup uses the Lua config; move an old
+            # hyprland.conf aside (backed up) so it can't take over.
+            if [[ -f $CONFIG_HOME/hypr/hyprland.conf ]]; then
+                mv "$CONFIG_HOME/hypr/hyprland.conf" "$CONFIG_HOME/hypr/hyprland.conf.bak.$(date +%Y%m%d-%H%M%S)"
+                warn "Moved your hyprland.conf aside (backup next to it); Hyprland now uses hyprland.lua."
+            fi
+            place_user_file "$w/hyprland.lua" "$CONFIG_HOME/hypr/hyprland.lua" ;;
+        sway|scroll)
+            get_cfg sway/config "$w/config"
+            sed -i "s/xkb_layout \"us\"/xkb_layout \"$KB_LAYOUT\"/" "$w/config"
+            apply_apps "$w/config" hash
+            [[ $id == scroll ]] && sed -i 's|/etc/sway/config.d/\*|/etc/scroll/config.d/*|' "$w/config"
+            if [[ $LID_FIX -eq 1 ]]; then
+                printf '\n# Lock and suspend on lid close (Noctalia)\nbindswitch --locked lid:on exec noctalia msg session lock-and-suspend\n' >> "$w/config"
+            fi
+            place_user_file "$w/config" "$CONFIG_HOME/$id/config" ;;
+        mango)
+            get_cfg mango/config.conf "$w/config.conf"
+            sed -i "s/^xkb_rules_layout=us$/xkb_rules_layout=$KB_LAYOUT/" "$w/config.conf"
+            apply_apps "$w/config.conf" hash
+            place_user_file "$w/config.conf" "$CONFIG_HOME/mango/config.conf" ;;
+        labwc)
+            get_cfg labwc/rc.xml "$w/rc.xml"
+            apply_apps "$w/rc.xml" xml
+            place_user_file "$w/rc.xml" "$CONFIG_HOME/labwc/rc.xml"
+            # autostart / environment: add our lines, keep the user's others.
+            local f
+            f="$CONFIG_HOME/labwc/autostart"
+            if [[ -f $f ]] && grep -q '^[^#]*\bnoctalia\b' "$f"; then :
+            else
+                get_cfg labwc/autostart "$w/autostart"
+                [[ -f $f ]] && { backup_if_exists "$f"; cat "$f" "$w/autostart" > "$w/autostart.new"; mv "$w/autostart.new" "$w/autostart"; }
+                place_user_file "$w/autostart" "$f"
+            fi
+            f="$CONFIG_HOME/labwc/environment"
+            { [[ -f $f ]] && grep -v '^XKB_DEFAULT_LAYOUT=' "$f"; echo "XKB_DEFAULT_LAYOUT=$KB_LAYOUT"; } > "$w/environment" || true
+            place_user_file "$w/environment" "$f" ;;
+        umbriel)
+            get_cfg umbriel/config.toml "$w/config.toml"
+            apply_apps "$w/config.toml" hash
+            place_user_file "$w/config.toml" "$CONFIG_HOME/umbriel/config.toml" ;;
+        kde)
+            get_cfg kde/noctalia.desktop "$w/noctalia.desktop"
+            place_user_file "$w/noctalia.desktop" "$CONFIG_HOME/autostart/noctalia.desktop"
+            warn "KDE Plasma: Noctalia autostarts, but blur, screenshots and clipboard history are limited there. Add shortcuts (noctalia msg ...) in System Settings." ;;
+    esac
+}
+
+# Root installs build AUR packages as the target user, whose sudo needs
+# a password; allow it without one only for the length of the install.
+aur_sudo_open()  { [[ $IS_ROOT -eq 1 ]] || return 0; echo "$TARGET_USER ALL=(ALL:ALL) NOPASSWD: ALL" > "$SUDOERS_TMP"; chmod 440 "$SUDOERS_TMP"; }
+aur_sudo_close() { [[ $IS_ROOT -eq 1 ]] || return 0; rm -f "$SUDOERS_TMP"; }
+
+install_aur_helper() {
+    local d; d="$(mktemp -d)"
+    [[ $IS_ROOT -eq 1 ]] && chown "$TARGET_USER:$TARGET_GROUP" "$d"
+    as_user git clone --depth 1 "https://aur.archlinux.org/${AUR_HELPER}-bin.git" "$d/$AUR_HELPER"
+    ( cd "$d/$AUR_HELPER" && as_user makepkg -si --noconfirm )
+    rm -rf "$d"
+    command -v "$AUR_HELPER" >/dev/null || die "$AUR_HELPER didn't install — see $LOG"
+    ok "Installed $AUR_HELPER"
+}
+
+aur_install() {  # aur_install PKG...
+    local flags=(-S --needed --noconfirm)
+    case $AUR_HELPER in
+        yay)  flags+=(--answerdiff None --answerclean None --answeredit None --removemake) ;;
+        paru) flags+=(--skipreview --removemake) ;;
+    esac
+    as_user "$AUR_HELPER" "${flags[@]}" "$@"
+}
+
 run_steps() {
     set -e
 
@@ -655,30 +896,20 @@ run_steps() {
     [[ -d $TARGET_HOME ]] || die "Home directory for $TARGET_USER not found."
     if [[ $IS_ROOT -eq 1 ]]; then CONFIG_HOME="$TARGET_HOME/.config"
     else CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"; fi
-    NIRI_DIR="$CONFIG_HOME/niri"
     NOCTALIA_DIR="$CONFIG_HOME/noctalia"
 
-    progress 4 prep "Preparing niri config…"
-    local work="$TMP_DIR/config.kdl"
-    if [[ -n $SCRIPT_DIR && -f $SCRIPT_DIR/niri/config.kdl ]]; then
-        cp "$SCRIPT_DIR/niri/config.kdl" "$work"
-    else
-        curl -fsSL "$REPO_RAW/niri/config.kdl" -o "$work" || die "Could not download config.kdl"
-    fi
-    sed -i "s/layout \"us\"/layout \"$KB_LAYOUT\"/" "$work"
-    sed -i "s/spawn \"alacritty\"/spawn \"$TERM_APP\"/" "$work"
-    if [[ $FM_APP == none ]]; then sed -i '/spawn "nautilus"/ s|^|//|' "$work"
-    else sed -i "s/spawn \"nautilus\"/spawn \"$FM_APP\"/" "$work"; fi
-    if [[ $BROWSER_APP == none ]]; then sed -i '/spawn "firefox"/ s|^|//|' "$work"
-    else sed -i "s/spawn \"firefox\"/spawn \"$BROWSER_APP\"/" "$work"; fi
-
+    # --- packages from the official repos ---
     local pkgs=(
-        niri noctalia xwayland-satellite
-        xdg-desktop-portal-gnome xdg-desktop-portal-gtk gnome-keyring
+        noctalia
+        xdg-desktop-portal-gtk gnome-keyring
         pipewire wireplumber pipewire-pulse
         playerctl brightnessctl
         noto-fonts noto-fonts-emoji ttf-jetbrains-mono-nerd
-    )
+    ) c
+    for c in "${COMPS[@]}"; do
+        # shellcheck disable=SC2207
+        pkgs+=($(comp_field "$c" 3))
+    done
     pkgs+=("$TERM_APP")   # always: Mod+Return is your way in
     if [[ $INSTALL_APPS -eq 1 ]]; then
         [[ $FM_APP != none ]] && pkgs+=("$FM_APP")
@@ -686,49 +917,84 @@ run_steps() {
     fi
     [[ $INSTALL_GREETER -eq 1 ]] && pkgs+=(noctalia-greeter)
     if [[ $INSTALL_GREETER -eq 1 || $POLKIT_AGENT -eq 1 ]]; then pkgs+=(polkit); fi
+    if [[ $AUR_HELPER != none ]]; then pkgs+=(base-devel git); [[ $IS_ROOT -eq 1 ]] && pkgs+=(sudo); fi
+    # de-duplicate
+    mapfile -t pkgs < <(printf '%s\n' "${pkgs[@]}" | awk 'NF && !seen[$0]++')
 
-    run_long 6 70 pkgs "Upgrading system and installing packages (this can take a while)…" \
+    run_long 6 55 pkgs "Upgrading system and installing packages (this can take a while)…" \
         as_root pacman -Syu --needed --noconfirm "${pkgs[@]}" \
         || die "pacman failed — see $LOG"
     ok "Packages installed"
+
+    # --- AUR helper and AUR packages ---
+    if [[ $AUR_HELPER != none ]]; then
+        aur_sudo_open
+        if [[ $AUR_HELPER != "$EXISTING_HELPER" ]]; then
+            run_long 56 62 helper "Building $AUR_HELPER from the AUR…" install_aur_helper \
+                || { aur_sudo_close; die "Installing $AUR_HELPER failed — see $LOG"; }
+        fi
+        if needs_aur; then
+            local aurp=()
+            for c in "${COMPS[@]}"; do
+                # shellcheck disable=SC2207
+                aurp+=($(comp_field "$c" 4))
+            done
+            run_long 62 72 aur "Building ${aurp[*]} from the AUR (this can take a while)…" aur_install "${aurp[@]}" \
+                || { aur_sudo_close; die "AUR build failed — see $LOG"; }
+            ok "Built ${aurp[*]}"
+        fi
+        aur_sudo_close
+    fi
 
     if pacman -Qq noctalia-shell &>/dev/null || pacman -Qq noctalia-shell-git &>/dev/null; then
         warn "Noctalia v4 (noctalia-shell) is still installed. Remove it once v5 works: sudo pacman -Rns noctalia-shell noctalia-qs"
     fi
 
-    progress 72 files "Installing niri config…"
-    mk_user_dir "$CONFIG_HOME" "$NIRI_DIR" "$NOCTALIA_DIR" \
+    # --- configs ---
+    progress 74 files "Writing compositor configs…"
+    mk_user_dir "$CONFIG_HOME" "$NOCTALIA_DIR" \
         "$TARGET_HOME/Pictures" "$TARGET_HOME/Pictures/Screenshots" "$TARGET_HOME/Pictures/Wallpapers"
-    backup_if_exists "$NIRI_DIR/config.kdl"
-    put_user_file "$work" "$NIRI_DIR/config.kdl"
-    ok "Installed $NIRI_DIR/config.kdl"
+    for c in "${COMPS[@]}"; do write_comp_config "$c"; done
 
-    local toml="$TMP_DIR/10-niri.toml"
+    local toml="$TMP_DIR/10-installer.toml"
     {
         echo "# Written by noctalia-niri-config-setup/install.sh"
         echo "[shell]"
-        [[ $TYPE_TO_LAUNCH -eq 1 ]] && echo "niri_overview_type_to_launch_enabled = true"
-        [[ $TYPE_TO_LAUNCH -eq 1 ]] && echo "niri_overview_close_on_launch_enabled = true"
+        if has_comp niri && [[ $TYPE_TO_LAUNCH -eq 1 ]]; then
+            echo "niri_overview_type_to_launch_enabled = true"
+            echo "niri_overview_close_on_launch_enabled = true"
+        fi
+        if has_comp umbriel && [[ $TYPE_TO_LAUNCH -eq 1 ]]; then
+            echo "umbriel_overview_type_to_launch_enabled = true"
+            echo "umbriel_overview_close_on_launch_enabled = true"
+        fi
         [[ $POLKIT_AGENT -eq 1 ]] && echo "polkit_agent = true"
         true
     } > "$toml"
-    backup_if_exists "$NOCTALIA_DIR/10-niri.toml"
-    put_user_file "$toml" "$NOCTALIA_DIR/10-niri.toml"
-    ok "Wrote $NOCTALIA_DIR/10-niri.toml"
-
-    progress 78 check "Validating niri config…"
-    if niri validate -c "$NIRI_DIR/config.kdl"; then
-        ok "niri config is valid"
-    else
-        warn "niri validate failed. If it mentions blur or background-effect, update niri. Details in $LOG"
+    # Older versions of this installer wrote 10-niri.toml; replace it.
+    if [[ -f $NOCTALIA_DIR/10-niri.toml ]] && grep -q 'noctalia-niri-config-setup' "$NOCTALIA_DIR/10-niri.toml"; then
+        rm -f "$NOCTALIA_DIR/10-niri.toml"
     fi
+    place_user_file "$toml" "$NOCTALIA_DIR/10-installer.toml"
+
+    # --- validation (only compositors that can check a config offline) ---
+    progress 78 check "Validating configs…"
+    if has_comp niri; then
+        if niri validate -c "$CONFIG_HOME/niri/config.kdl"; then ok "niri config is valid"
+        else warn "niri validate failed. If it mentions blur or background-effect, update niri. Details in $LOG"; fi
+    fi
+    for c in sway scroll; do
+        has_comp "$c" || continue
+        if "$c" -C -c "$CONFIG_HOME/$c/config"; then ok "$c config is valid"
+        else warn "$c -C reported problems with $CONFIG_HOME/$c/config. Details in $LOG"; fi
+    done
 
     if [[ $LID_FIX -eq 1 ]]; then
         progress 80 lid "Configuring lid close…"
         as_root mkdir -p /etc/systemd/logind.conf.d
         printf '[Login]\nHandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\n' \
             | as_root tee /etc/systemd/logind.conf.d/10-noctalia-lid.conf >/dev/null
-        ok "Lid close handled by niri/Noctalia (after reboot)"
+        ok "Lid close is handled by the compositor and Noctalia (after reboot)"
     fi
 
     if [[ $INSTALL_GREETER -eq 1 ]]; then
@@ -831,24 +1097,26 @@ scr_failed() {
 
 scr_done() {
     local login
-    if [[ $GREETER_ENABLED -eq 1 ]]; then login="Reboot, pick ${P}Niri${R}${X} in Noctalia Greeter and log in as ${P}${TARGET_USER}${R}"
-    elif [[ -n $CURRENT_DM ]]; then login="Log out and pick ${P}Niri${R}${X} in ${CURRENT_DM}"
-    else login="Log in on a TTY as ${P}${TARGET_USER}${R}${X} and run ${P}niri-session${R}"; fi
+    local first_name first_cmd
+    first_name="$(comp_field "${COMPS[0]}" 2)"; first_cmd="$(comp_field "${COMPS[0]}" 5)"
+    if [[ $GREETER_ENABLED -eq 1 ]]; then login="Reboot, pick ${P}${first_name}${R}${X} (or another session) in Noctalia Greeter"
+    elif [[ -n $CURRENT_DM ]]; then login="Log out and pick ${P}${first_name}${R}${X} in ${CURRENT_DM}"
+    else login="Log in on a TTY as ${P}${TARGET_USER}${R}${X} and run ${P}${first_cmd}${R}"; fi
 
-    cls; header "Install"
-    local done_line="" name
-    for name in "${STEPS[@]}"; do done_line+="${T}${SYM_DONE}${R} ${D}${name}${R}  "; done
-    at 4 3; out "$done_line"
+    cls; header "__all_done__"   # an unknown step name marks every step as done
     at 6 3; out "${T}${B}${SYM_DONE} Your Noctalia desktop is ready${R}"
     at 7 3; out "${X}${login}${R}"
     keyrow() {  # keyrow KEY LABEL KEY LABEL -> two aligned columns
         local a; a="$(pill "$1" "$BS") ${X}$2${R}"
         printf '%s%s%s' "$a" "$(rep " " $(( 34 - $(vlen "$a") )))" "$(pill "$3" "$BS") ${X}$4${R}"
     }
+    # niri binds settings to Mod+Shift+Comma (Mod+Comma is taken there).
+    local settings_key="Mod+,"
+    [[ ${#COMPS[@]} -eq 1 && ${COMPS[0]} == niri ]] && settings_key="Mod+Shift+,"
     card 9 \
         "$(keyrow "Mod+Return" "terminal ($TERM_APP)" "Mod+Space" "launcher")" \
-        "$(keyrow "Mod+S" "control center" "Mod+O" "overview")" \
-        "$(keyrow "Mod+Shift+," "Noctalia settings" "Mod+Shift+/" "all keys")"
+        "$(keyrow "Mod+S" "control center" "Mod+Q" "close window")" \
+        "$(keyrow "$settings_key" "Noctalia settings" "Mod+1..9" "workspaces")"
     local row=16 w
     if [[ -s $WARN_FILE ]]; then
         at "$row" 3; out "${P}${B}! Notes${R}"; row=$((row + 1))
@@ -908,8 +1176,9 @@ fi
 
 echo
 ok "All done."
-if [[ $GREETER_ENABLED -eq 1 ]]; then echo "Reboot: Noctalia Greeter appears. Pick \"Niri\" and log in as $TARGET_USER."
-elif [[ -n $CURRENT_DM ]]; then echo "Log out and pick \"Niri\" in $CURRENT_DM."
-else echo "Log in on a TTY as $TARGET_USER and run: niri-session"; fi
+echo "Compositors: $(comp_names)"
+if [[ $GREETER_ENABLED -eq 1 ]]; then echo "Reboot: Noctalia Greeter appears. Pick a session and log in as $TARGET_USER."
+elif [[ -n $CURRENT_DM ]]; then echo "Log out and pick $(comp_field "${COMPS[0]}" 2) in $CURRENT_DM."
+else echo "Log in on a TTY as $TARGET_USER and run: $(comp_field "${COMPS[0]}" 5)"; fi
 [[ -s $WARN_FILE ]] && { echo; echo "Notes:"; sed 's/^/  • /' "$WARN_FILE"; }
 echo "Log: $LOG"
