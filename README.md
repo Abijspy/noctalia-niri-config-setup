@@ -1,12 +1,12 @@
 # noctalia-niri-config-setup
 
-Ready-made configs and an Arch Linux installer for the [Noctalia v5](https://docs.noctalia.dev/noctalia/) shell, on every compositor Noctalia supports: **niri, Hyprland, Sway, Scroll, Mango, Labwc, Umbriel and KDE Plasma**. The installer uses Noctalia's own colors and can also install the **yay** or **paru** AUR helper.
+Ready-made configs and an installer for the [Noctalia v5](https://docs.noctalia.dev/noctalia/) shell, on every compositor Noctalia supports (**niri, Hyprland, Sway, Scroll, Mango, Labwc, Umbriel and KDE Plasma**) and every distribution Noctalia packages for (**Arch, Fedora, openSUSE, Debian/Ubuntu, Void, Alpine Edge, Chimera, Gentoo and Solus**). The installer uses Noctalia's own colors, and on Arch it can install the **yay** or **paru** AUR helper.
 
 ![The installer's welcome screen](docs/screenshots/welcome.png)
 
-## Quick install (Arch Linux)
+## Quick install
 
-Works on a **fresh minimal Arch install**, straight from the TTY and even as root:
+Works on a **fresh minimal install**, straight from the TTY and even as root:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Abijspy/noctalia-niri-config-setup/main/install.sh | bash
@@ -39,6 +39,10 @@ On a minimal install, straight from the TTY:
 
 ![The installer on the Linux console](docs/screenshots/tty.png)
 
+On other distributions, compositors your distribution doesn't package are greyed out, with the reason:
+
+![Compositor list on Void Linux](docs/screenshots/distro.png)
+
 <sub>Screenshots are rendered from a test run, so the install log shows placeholder package names.</sub>
 
 **Controls**
@@ -67,9 +71,35 @@ On a minimal install, straight from the TTY:
 
 If something fails, the installer shows the last lines of the log. The full log is at `/tmp/noctalia-niri-install.log`.
 
+## Distributions
+
+The installer reads `/etc/os-release`, adds Noctalia's repository the way [Noctalia's install guide](https://docs.noctalia.dev/noctalia/getting-started/installation/) describes, and installs everything with your distribution's package manager.
+
+| Distribution | Package manager | Noctalia comes from | Noctalia Greeter |
+|---|---|---|---|
+| Arch Linux and derivatives (CachyOS, EndeavourOS, Manjaro…) | `pacman` (+ yay/paru for the AUR) | `[extra]` | yes |
+| Fedora 44+ | `dnf` | Fedora; Terra for the greeter and Umbriel | yes |
+| openSUSE Tumbleweed, Slowroll, Leap 16 | `zypper` | openSUSE; OBS `home:neifua:Noctalia` for Umbriel | Tumbleweed / Slowroll |
+| Debian 13, Debian sid, Ubuntu 26.04 / 26.10 and derivatives | `apt` | Noctalia's APT repository (amd64 / arm64) | yes |
+| Void Linux | `xbps` | UniversalRepository | — |
+| Alpine Edge | `apk` | UniversalRepository | — |
+| Chimera Linux | `apk` | Chimera's user repository | — |
+| Gentoo | `emerge` | GURU overlay | — |
+| Solus | `eopkg` | Solus | — |
+| NixOS, Guix, anything else | — | **configs only** | — |
+
+- **Package checks:** before installing, each package is looked up with your package manager.
+  - A compositor your distribution doesn't package can't be picked.
+  - A missing optional package (a font, a portal) is skipped and listed at the end.
+  - If Noctalia or a chosen compositor can't be found, the installer stops before installing anything.
+- **Configs only:** on NixOS, Guix, other distributions, and releases Noctalia doesn't package for (e.g. Debian 12, Fedora 43, Alpine stable), the installer writes the compositor and Noctalia configs and tells you what to install yourself.
+- **Only on Arch:** the AUR (Scroll, `umbriel-git`, yay/paru) and the `pacman -Syu` system upgrade.
+- **Greeter and lid lock:** these need systemd. The greeter is offered only where it's packaged.
+- **Run as root on doas-only systems:** when there's no sudo (common on Alpine and Chimera), run the installer as root, e.g. `doas ./install.sh`.
+
 ## Compositors
 
-| Compositor | Package | Config written | Start from a TTY |
+| Compositor | Package (Arch) | Config written | Start from a TTY |
 |---|---|---|---|
 | niri | `niri` | `~/.config/niri/config.kdl` | `niri-session` |
 | Hyprland | `hyprland` | `~/.config/hypr/hyprland.lua` | `Hyprland` |
@@ -104,12 +134,12 @@ What to know about each one:
 
 ## What gets installed
 
-- `noctalia` (v5), portals, PipeWire, `playerctl`, `brightnessctl`, fonts, and the packages for each compositor you pick. This runs a full `pacman -Syu`.
-- With an AUR helper: `base-devel` and `git`, then `paru-bin` or `yay-bin`, built from the AUR as your user. AUR packages (Scroll, Umbriel) are built the same way.
+- `noctalia` (v5), portals, PipeWire, `playerctl`, `brightnessctl`, fonts, and the packages for each compositor you pick, under your distribution's package names. On Arch this runs a full `pacman -Syu`.
+- On Arch with an AUR helper: `base-devel` and `git`, then `paru-bin` or `yay-bin`, built from the AUR as your user. AUR packages (Scroll, Umbriel) are built the same way.
   - Run as root, the installer gives that user passwordless `sudo` only while it builds, and removes the rule straight after (and on exit).
 - A config for each compositor you picked (see the table above). Any existing file is backed up first.
 - `~/.config/noctalia/10-installer.toml`, which turns on overview type-to-launch for niri and Umbriel and the polkit agent.
-- If you choose the greeter: `noctalia-greeter` from `[extra]` (which pulls in `greetd`) and `polkit`. The installer sets these lines in `[default_session]` of `/etc/greetd/config.toml` and leaves the rest of the file unchanged:
+- If you choose the greeter: `noctalia-greeter` (which pulls in `greetd`) and `polkit`. The installer sets `command` in `[default_session]` of `/etc/greetd/config.toml`, keeps the greeter account your distribution's greetd already uses (or sets `greeter` if there is none), and leaves the rest of the file unchanged. On Debian and Ubuntu the greeter package configures greetd itself, so the file isn't touched:
   ```toml
   [default_session]
   command = "/usr/bin/noctalia-greeter-session"
@@ -124,7 +154,7 @@ What to know about each one:
 | `--no-tui` | Plain text prompts instead of menus |
 | `--yes` | No prompts at all, use defaults and flags |
 | `--compositors=…` | Comma-separated: `niri` `hyprland` `sway` `scroll` `mango` `labwc` `umbriel` `kde` (default `niri`) |
-| `--aur-helper=…` | `auto` (keep an installed one, else paru when needed), `paru`, `yay`, `none` |
+| `--aur-helper=…` | Arch only: `auto` (keep an installed one, else paru when needed), `paru`, `yay`, `none` |
 | `--user=NAME` | User to set up when run as root |
 | `--terminal=…` | `alacritty` `kitty` `foot` `ghostty` `wezterm` |
 | `--file-manager=…` | `nautilus` `thunar` `dolphin` `nemo` `none` |

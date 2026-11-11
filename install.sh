@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # =====================================================================
-#  Noctalia v5 desktop installer for Arch Linux
+#  Noctalia v5 desktop installer for Linux
 #  https://github.com/Abijspy/noctalia-niri-config-setup
 #
 #  Sets up Noctalia on any compositor it supports: niri, Hyprland,
-#  Sway, Scroll, Mango, Labwc, Umbriel and KDE Plasma. A full-screen
-#  installer in Noctalia's colors that works on a fresh minimal Arch
-#  install (bare TTY, even as root). Can install yay or paru.
+#  Sway, Scroll, Mango, Labwc, Umbriel and KDE Plasma, on every
+#  distribution Noctalia packages for: Arch, Fedora, openSUSE,
+#  Debian/Ubuntu, Void, Alpine Edge, Chimera, Gentoo and Solus
+#  (configs only on NixOS, Guix and others). Full-screen installer in
+#  Noctalia's colors; works from a bare TTY, even as root. On Arch it
+#  can install yay or paru.
 #
 #  Usage:
 #    ./install.sh                     # TUI installer (default)
@@ -54,7 +57,7 @@ COMPOSITORS="niri"
 COMPS_FROM_FLAG=0
 AUR_HELPER="auto"
 
-usage() { sed -n '3,30p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '3,33p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
 
 for arg in "$@"; do
     case "$arg" in
@@ -113,8 +116,8 @@ for c in "${COMPS[@]}"; do
 done
 
 has_comp()      { local c; for c in "${COMPS[@]}"; do [[ $c == "$1" ]] && return 0; done; return 1; }
-needs_aur()     { local c; for c in "${COMPS[@]}"; do [[ -n $(comp_field "$c" 4) ]] && return 0; done; return 1; }
-aur_comp_names() { local c n=(); for c in "${COMPS[@]}"; do [[ -n $(comp_field "$c" 4) ]] && n+=("$(comp_field "$c" 2)"); done; local IFS=/; echo "${n[*]}"; }
+needs_aur()     { local c; for c in "${COMPS[@]}"; do [[ -n $(comp_aur_pkgs "$c") ]] && return 0; done; return 1; }
+aur_comp_names() { local c n=(); for c in "${COMPS[@]}"; do [[ -n $(comp_aur_pkgs "$c") ]] && n+=("$(comp_field "$c" 2)"); done; local IFS=/; echo "${n[*]}"; }
 comp_names()    { local c n=(); for c in "${COMPS[@]}"; do n+=("$(comp_field "$c" 2)"); done; local IFS=,; echo "${n[*]}" | sed 's/,/, /g'; }
 # Lid lock is wired up only in configs that can bind the lid switch.
 lid_supported() { local c; for c in "${COMPS[@]}"; do case $c in niri|sway|scroll) ;; *) return 1 ;; esac; done; return 0; }
@@ -122,9 +125,272 @@ lid_supported() { local c; for c in "${COMPS[@]}"; do case $c in niri|sway|scrol
 EXISTING_HELPER=""
 for h in paru yay; do command -v "$h" >/dev/null && { EXISTING_HELPER=$h; break; }; done
 default_helper() {
+    [[ $FAMILY == arch ]] || { echo none; return; }
     if [[ -n $EXISTING_HELPER ]]; then echo "$EXISTING_HELPER"
     elif needs_aur; then echo paru
     else echo none; fi
+}
+
+# =====================================================================
+#  Distribution support
+#  Noctalia packages: https://docs.noctalia.dev/noctalia/getting-started/installation/
+# =====================================================================
+# For testing: NOCTALIA_OS_RELEASE=/path/to/os-release overrides detection.
+OS_RELEASE_FILE="${NOCTALIA_OS_RELEASE:-/etc/os-release}"
+osval() {  # osval KEY — read a value from os-release without sourcing it
+    [[ -r $OS_RELEASE_FILE ]] || return 0
+    sed -n "s/^$1=//p" "$OS_RELEASE_FILE" | head -n1 | sed 's/^["'\'']//; s/["'\'']$//'
+}
+OS_ID="$(osval ID)"; OS_LIKE="$(osval ID_LIKE)"; OS_NAME="$(osval PRETTY_NAME)"
+[[ -z $OS_NAME ]] && OS_NAME="$(osval NAME)"; [[ -z $OS_NAME ]] && OS_NAME="Linux"
+OS_VERSION_ID="$(osval VERSION_ID)"; OS_CODENAME="$(osval VERSION_CODENAME)"; OS_UBUNTU_CODENAME="$(osval UBUNTU_CODENAME)"
+
+# FAMILY: arch fedora opensuse debian void alpine chimera gentoo solus,
+# or "configs" (NixOS, Guix, anything else): write configs only.
+FAMILY=configs; FAMILY_NOTE=""
+case " $OS_ID $OS_LIKE " in
+    *" nixos "*)                FAMILY_NOTE="NixOS is configured declaratively: add noctalia and your compositor to your Nix config." ;;
+    *" guix "*)                 FAMILY_NOTE="Guix: install the noctalia-shell package (gnu packages window-management) or the noctalia channel." ;;
+    *" arch "*|*" archlinux "*) FAMILY=arch ;;
+    *" chimera "*)              FAMILY=chimera ;;
+    *" alpine "*)               FAMILY=alpine ;;
+    *" void "*)                 FAMILY=void ;;
+    *" gentoo "*)               FAMILY=gentoo ;;
+    *" solus "*)                FAMILY=solus ;;
+    *" rhel "*|*" centos "*)    FAMILY_NOTE="$OS_NAME has no Noctalia packages; install Noctalia manually (see its docs)." ;;
+    *" fedora "*)               FAMILY=fedora ;;
+    *" suse "*|*" opensuse "*|*opensuse-*) FAMILY=opensuse ;;
+    *" debian "*|*" ubuntu "*)  FAMILY=debian ;;
+    *)                          FAMILY_NOTE="$OS_NAME isn't one of the distributions Noctalia packages for." ;;
+esac
+
+# Release checks for the Noctalia repositories.
+DEB_SUITE=""
+if [[ $FAMILY == debian ]]; then
+    case "${OS_UBUNTU_CODENAME:-$OS_CODENAME}" in
+        trixie)        DEB_SUITE=trixie ;;
+        sid|forky)     DEB_SUITE=unstable ;;
+        resolute)      DEB_SUITE=resolute ;;
+        stonking)      DEB_SUITE=stonking ;;
+        *) FAMILY=configs
+           FAMILY_NOTE="Noctalia's APT repository covers Debian 13 (trixie), Debian sid, and Ubuntu 26.04 / 26.10; this is ${OS_CODENAME:-an unknown release}." ;;
+    esac
+    [[ $(dpkg --print-architecture 2>/dev/null) =~ ^(amd64|arm64)$ ]] || { [[ $FAMILY == debian ]] && FAMILY=configs && FAMILY_NOTE="Noctalia's APT repository has amd64 and arm64 packages only."; }
+fi
+if [[ $FAMILY == fedora && ${OS_VERSION_ID%%.*} =~ ^[0-9]+$ && ${OS_VERSION_ID%%.*} -lt 44 ]]; then
+    FAMILY=configs; FAMILY_NOTE="Noctalia is in Fedora's repositories from Fedora 44."
+fi
+SUSE_FLAVOR=""
+if [[ $FAMILY == opensuse ]]; then
+    case $OS_ID in
+        opensuse-tumbleweed) SUSE_FLAVOR=Tumbleweed ;;
+        opensuse-slowroll)   SUSE_FLAVOR=Slowroll ;;
+        opensuse-leap)       SUSE_FLAVOR=Leap ;;
+        *)                   SUSE_FLAVOR=Tumbleweed ;;
+    esac
+    if [[ $SUSE_FLAVOR == Leap && ${OS_VERSION_ID%%.*} -lt 16 ]]; then FAMILY=configs; FAMILY_NOTE="Noctalia needs openSUSE Tumbleweed, Slowroll or Leap 16."; fi
+fi
+if [[ $FAMILY == alpine && $OS_VERSION_ID != *_alpha* ]]; then
+    FAMILY=configs; FAMILY_NOTE="Noctalia's Alpine packages are for Alpine Edge."
+fi
+
+case $FAMILY in
+    arch) FAMILY_LABEL="Arch Linux" ;; fedora) FAMILY_LABEL="Fedora" ;; opensuse) FAMILY_LABEL="openSUSE $SUSE_FLAVOR" ;;
+    debian) FAMILY_LABEL="$OS_NAME" ;; void) FAMILY_LABEL="Void Linux" ;; alpine) FAMILY_LABEL="Alpine Edge" ;;
+    chimera) FAMILY_LABEL="Chimera Linux" ;; gentoo) FAMILY_LABEL="Gentoo" ;; solus) FAMILY_LABEL="Solus" ;;
+    *) FAMILY_LABEL="$OS_NAME" ;;
+esac
+CONFIGS_ONLY=0; [[ $FAMILY == configs ]] && CONFIGS_ONLY=1
+HAS_SYSTEMD=0; [[ -d /run/systemd/system ]] && HAS_SYSTEMD=1
+# Only Arch has the AUR; the greeter is packaged for these systemd distros.
+GREETER_DISTRO=0; case $FAMILY in arch|fedora|opensuse|debian) GREETER_DISTRO=1 ;; esac
+[[ $FAMILY == opensuse && $SUSE_FLAVOR == Leap ]] && GREETER_DISTRO=0
+[[ $HAS_SYSTEMD -eq 1 ]] || GREETER_DISTRO=0
+
+# ---------- package names per distribution ----------
+# pkgs GENERIC -> this distribution's package name(s); empty = not packaged.
+pkgs() {
+    local g=$1
+    if [[ $FAMILY == gentoo ]]; then
+        case $g in
+            noctalia) echo gui-apps/noctalia ;;          polkit) echo sys-auth/polkit ;;
+            keyring) echo gnome-base/gnome-keyring ;;    portal-gtk) echo sys-apps/xdg-desktop-portal-gtk ;;
+            audio) echo "media-video/pipewire media-video/wireplumber" ;;
+            media) echo "media-sound/playerctl app-misc/brightnessctl" ;;
+            fonts) echo "media-fonts/noto media-fonts/noto-emoji" ;;
+            sudo) echo app-admin/sudo ;;                 curl) echo net-misc/curl ;;
+            alacritty) echo x11-terms/alacritty ;;       kitty) echo x11-terms/kitty ;;
+            foot) echo gui-apps/foot ;;                  ghostty) echo x11-terms/ghostty ;;
+            wezterm) echo x11-terms/wezterm ;;           nautilus) echo gnome-base/nautilus ;;
+            thunar) echo xfce-base/thunar ;;             dolphin) echo kde-apps/dolphin ;;
+            nemo) echo gnome-extra/nemo ;;               firefox) echo www-client/firefox-bin ;;
+            chromium) echo www-client/chromium ;;
+            *) echo "" ;;
+        esac
+        return
+    fi
+    case "$FAMILY:$g" in
+        *:noctalia)        echo noctalia ;;
+        *:greeter)         [[ $GREETER_DISTRO -eq 1 ]] && echo noctalia-greeter ;;
+        debian:polkit)     echo polkitd ;;
+        *:polkit)          echo polkit ;;
+        *:keyring)         echo gnome-keyring ;;
+        *:portal-gtk)      echo xdg-desktop-portal-gtk ;;
+        fedora:audio|opensuse:audio) echo "pipewire wireplumber pipewire-pulseaudio" ;;
+        void:audio|chimera:audio|solus:audio) echo "pipewire wireplumber" ;;
+        *:audio)           echo "pipewire wireplumber pipewire-pulse" ;;
+        *:media)           echo "playerctl brightnessctl" ;;
+        arch:fonts)        echo "noto-fonts noto-fonts-emoji ttf-jetbrains-mono-nerd" ;;
+        fedora:fonts)      echo "google-noto-sans-fonts google-noto-color-emoji-fonts jetbrains-mono-fonts" ;;
+        opensuse:fonts)    echo "google-noto-sans-fonts noto-coloremoji-fonts jetbrains-mono-fonts" ;;
+        debian:fonts)      echo "fonts-noto-core fonts-noto-color-emoji fonts-jetbrains-mono" ;;
+        void:fonts)        echo "noto-fonts-ttf noto-fonts-emoji" ;;
+        alpine:fonts|chimera:fonts) echo "font-noto font-noto-emoji" ;;
+        solus:fonts)       echo "noto-sans-ttf noto-emoji" ;;
+        *:sudo)            echo sudo ;;
+        *:curl)            echo curl ;;
+        *)                 echo "$g" ;;   # apps share their names across distributions
+    esac
+}
+
+# Compositor packages: main package first, then portals / Xwayland.
+comp_repo_pkgs() {
+    local id=$1
+    if [[ $FAMILY == arch ]]; then comp_field "$id" 3; return; fi
+    case "$FAMILY:$id" in
+        fedora:niri|opensuse:niri)   echo "niri xwayland-satellite xdg-desktop-portal-gnome" ;;
+        *:niri)
+            case $FAMILY in gentoo) echo gui-wm/niri ;; *) echo "niri xdg-desktop-portal-gnome" ;; esac ;;
+        void:hyprland)               echo "" ;;
+        gentoo:hyprland)             echo "gui-wm/hyprland gui-libs/xdg-desktop-portal-hyprland" ;;
+        *:hyprland)                  echo "hyprland xdg-desktop-portal-hyprland" ;;
+        gentoo:sway)                 echo "gui-wm/sway gui-libs/xdg-desktop-portal-wlr" ;;
+        *:sway)                      echo "sway xdg-desktop-portal-wlr" ;;
+        gentoo:labwc)                echo "gui-wm/labwc gui-libs/xdg-desktop-portal-wlr" ;;
+        *:labwc)                     echo "labwc xdg-desktop-portal-wlr" ;;
+        debian:umbriel)              echo "umbriel xdg-desktop-portal-umbriel" ;;
+        fedora:umbriel)              echo "umbriel-nightly" ;;
+        opensuse:umbriel)            [[ $SUSE_FLAVOR != Leap ]] && echo "umbriel-git" ;;
+        fedora:kde)                  echo "plasma-desktop xdg-desktop-portal-kde" ;;
+        opensuse:kde)                echo "plasma6-workspace xdg-desktop-portal-kde" ;;
+        debian:kde)                  echo "plasma-desktop xdg-desktop-portal-kde" ;;
+        void:kde)                    echo "kde-plasma xdg-desktop-portal-kde" ;;
+        alpine:kde|chimera:kde|solus:kde) echo "plasma-desktop" ;;
+        gentoo:kde)                  echo "kde-plasma/plasma-meta" ;;
+        *)                           echo "" ;;   # scroll, mango: not packaged outside Arch
+    esac
+}
+comp_aur_pkgs() { [[ $FAMILY == arch ]] && comp_field "$1" 4; true; }
+
+# Packages that come from a repository the installer adds, so they can't
+# be looked up before the install starts.
+from_added_repo() {
+    case "$FAMILY:$1" in
+        debian:noctalia|debian:noctalia-greeter|debian:umbriel|debian:xdg-desktop-portal-umbriel) return 0 ;;
+        fedora:noctalia-greeter|fedora:umbriel-nightly|opensuse:umbriel-git) return 0 ;;
+        void:noctalia|alpine:noctalia|chimera:noctalia|gentoo:gui-apps/noctalia) return 0 ;;
+    esac
+    return 1
+}
+
+# ---------- package manager ----------
+pm_has() {  # pm_has PKG — is it in the configured repositories?
+    local p=$1
+    case $FAMILY in
+        arch)     pacman -Si "$p" &>/dev/null ;;
+        fedora)   [[ -n $(dnf -q repoquery --available "$p" 2>/dev/null) ]] ;;
+        opensuse) zypper -n -q search -x -t package "$p" &>/dev/null ;;
+        debian)   apt-cache show "$p" &>/dev/null ;;
+        void)     xbps-query -R "$p" &>/dev/null ;;
+        alpine|chimera) [[ -n $(apk search -x "$p" 2>/dev/null) ]] ;;
+        gentoo)   compgen -G "/var/db/repos/*/$p/*.ebuild" >/dev/null ;;
+        solus)    eopkg info "$p" &>/dev/null ;;
+        *)        return 1 ;;
+    esac
+}
+pkg_ok() { from_added_repo "$1" || pm_has "$1"; }
+
+pm_install() {  # pm_install PKG...
+    case $FAMILY in
+        arch)     as_root pacman -Syu --needed --noconfirm "$@" ;;
+        fedora)   as_root dnf install -y "$@" ;;
+        opensuse) as_root zypper -n --gpg-auto-import-keys install --auto-agree-with-licenses "$@" ;;
+        debian)   as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" ;;
+        void)     as_root xbps-install -Sy "$@" ;;
+        alpine|chimera) as_root apk add "$@" ;;
+        gentoo)   as_root emerge --noreplace --ask=n "$@" ;;
+        solus)    as_root eopkg install -y "$@" ;;
+    esac
+}
+
+pm_refresh() {
+    case $FAMILY in
+        opensuse) as_root zypper -n --gpg-auto-import-keys refresh ;;
+        debian)   as_root apt-get update ;;
+        # "yes" accepts the new repository key; run it in sh so its SIGPIPE
+        # exit (once xbps is done) isn't seen by our pipefail.
+        void)     as_root sh -c 'yes | xbps-install -S' ;;
+        alpine|chimera) as_root apk update ;;
+        solus)    as_root eopkg update-repo ;;
+        *)        true ;;
+    esac
+}
+
+download() {  # download URL DEST
+    if command -v curl >/dev/null; then curl -fsSL "$1" -o "$2"
+    elif command -v wget >/dev/null; then wget -qO "$2" "$1"
+    else die "Need curl or wget to download $1"; fi
+}
+
+# Add the Noctalia (and related) repositories, as Noctalia's docs describe.
+setup_repos() {
+    local t="$TMP_DIR/repo"; mkdir -p "$t"
+    case $FAMILY in
+        debian)
+            command -v curl >/dev/null || pm_install curl ca-certificates
+            download https://pkg.noctalia.dev/deb/nickh-archive-keyring.deb "$t/keyring.deb"
+            as_root dpkg -i "$t/keyring.deb"
+            download "https://pkg.noctalia.dev/deb/noctalia-$DEB_SUITE.sources" "$t/noctalia.sources"
+            as_root install -m 644 "$t/noctalia.sources" "/etc/apt/sources.list.d/noctalia-$DEB_SUITE.sources"
+            if [[ $DEB_SUITE == trixie ]] && ! grep -rqs 'trixie-backports' /etc/apt/sources.list /etc/apt/sources.list.d/; then
+                printf 'Types: deb\nURIs: http://deb.debian.org/debian\nSuites: trixie-backports\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' \
+                    | as_root tee /etc/apt/sources.list.d/debian-trixie-backports.sources >/dev/null
+            fi
+            ok "Added Noctalia's APT repository ($DEB_SUITE)" ;;
+        fedora)
+            if [[ $INSTALL_GREETER -eq 1 ]] || has_comp umbriel; then
+                # Terra carries noctalia-greeter and Umbriel for Fedora.
+                as_root dnf install -y --nogpgcheck --repofrompath 'terra,https://repos.fyralabs.com/terra$releasever' terra-release
+                ok "Added the Terra repository"
+            fi ;;
+        opensuse)
+            if has_comp umbriel; then
+                as_root zypper -n addrepo --refresh --name 'Noctalia Project' \
+                    "https://download.opensuse.org/repositories/home:neifua:Noctalia/openSUSE_${SUSE_FLAVOR}/home:neifua:Noctalia.repo" || true
+                ok "Added the Noctalia OBS repository"
+            fi ;;
+        void)
+            echo 'repository=https://universalrepo.pages.dev/void' | as_root tee /etc/xbps.d/10-universalrepository.conf >/dev/null
+            ok "Added the UniversalRepository for Void" ;;
+        alpine)
+            download https://downloads.sourceforge.net/project/universalrepository/alpine/universalrepository.rsa.pub "$t/universalrepository.rsa.pub"
+            as_root install -m 644 "$t/universalrepository.rsa.pub" /etc/apk/keys/
+            grep -qs 'universalrepository/alpine/community' /etc/apk/repositories \
+                || echo 'https://downloads.sourceforge.net/project/universalrepository/alpine/community' | as_root tee -a /etc/apk/repositories >/dev/null
+            ok "Added the UniversalRepository for Alpine" ;;
+        chimera)
+            as_root apk add chimera-repo-user
+            ok "Enabled Chimera's user repository" ;;
+        gentoo)
+            as_root emerge --noreplace --ask=n app-eselect/eselect-repository
+            as_root eselect repository enable guru || true
+            as_root emaint sync -r guru
+            as_root mkdir -p /etc/portage/package.accept_keywords
+            echo "gui-apps/noctalia ~$(portageq envvar ARCH 2>/dev/null || echo amd64)" \
+                | as_root tee /etc/portage/package.accept_keywords/noctalia >/dev/null
+            ok "Enabled the GURU overlay for Noctalia" ;;
+    esac
+    pm_refresh
 }
 
 # ---------- plain output helpers ----------
@@ -151,13 +417,25 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------- environment checks ----------
-command -v pacman >/dev/null || die "pacman not found — this installer is for Arch Linux."
+if [[ $CONFIGS_ONLY -eq 0 ]]; then
+    case $FAMILY in
+        arch) PM=pacman ;; fedora) PM=dnf ;; opensuse) PM=zypper ;; debian) PM=apt-get ;;
+        void) PM=xbps-install ;; alpine|chimera) PM=apk ;; gentoo) PM=emerge ;; solus) PM=eopkg ;;
+    esac
+    command -v "$PM" >/dev/null || die "$FAMILY_LABEL detected, but $PM is missing."
+fi
+[[ $AUR_HELPER != auto && $AUR_HELPER != none && $FAMILY != arch ]] && die "--aur-helper is only for Arch Linux (the AUR)."
 
 if [[ $EUID -eq 0 ]]; then
     IS_ROOT=1; SUDO=()
+elif [[ $CONFIGS_ONLY -eq 1 ]]; then
+    IS_ROOT=0; SUDO=(false)   # configs-only: nothing needs root
 else
     IS_ROOT=0; SUDO=(sudo)
-    command -v sudo >/dev/null || die "sudo is not installed. Run this installer as root instead (it can create your user)."
+    if ! command -v sudo >/dev/null; then
+        if command -v doas >/dev/null; then die "Run this installer as root: doas $0"
+        else die "sudo is not installed. Run this installer as root instead (it can create your user)."; fi
+    fi
 fi
 
 IS_LAPTOP=0
@@ -169,16 +447,27 @@ CURRENT_DM="$(basename "$(readlink -f /etc/systemd/system/display-manager.servic
 HAVE_TTY=0
 { : </dev/tty >/dev/tty; } 2>/dev/null && HAVE_TTY=1
 
-if [[ $IS_ROOT -eq 0 ]]; then
+if [[ $IS_ROOT -eq 0 && $CONFIGS_ONLY -eq 0 ]]; then
     info "Administrator rights are needed to install packages."
     sudo -v </dev/tty || die "sudo authentication failed."
     ( while kill -0 $$ 2>/dev/null; do sudo -n true; sleep 45; done ) 2>/dev/null &
     KEEPALIVE_PID=$!
 fi
 
-pac_install_quiet() {  # install from the current db; full -Syu only if that fails
-    "${SUDO[@]}" pacman -S --needed --noconfirm "$@" >>"$LOG" 2>&1 \
-        || "${SUDO[@]}" pacman -Syu --needed --noconfirm "$@" >>"$LOG" 2>&1
+# Which compositors can be installed here (checked once, before the UI).
+declare -A COMP_OK COMP_WHY
+check_comp_availability() {
+    local row id pk aur main
+    for row in "${COMP_TABLE[@]}"; do
+        id=${row%%|*}
+        if [[ $CONFIGS_ONLY -eq 1 ]]; then COMP_OK[$id]=1; continue; fi
+        pk="$(comp_repo_pkgs "$id")"; aur="$(comp_aur_pkgs "$id")"
+        main=${pk%% *}
+        if [[ -n $aur ]]; then COMP_OK[$id]=1
+        elif [[ -z $main ]]; then COMP_OK[$id]=0; COMP_WHY[$id]="not packaged for $FAMILY_LABEL"
+        elif pkg_ok "$main"; then COMP_OK[$id]=1
+        else COMP_OK[$id]=0; COMP_WHY[$id]="$main isn't in your repositories"; fi
+    done
 }
 
 # =====================================================================
@@ -265,7 +554,8 @@ header() {  # header CURRENT_STEP_NAME
     for name in "${STEPS[@]}"; do total=$(( total + ${#name} + 4 )); done
     (( total > COLS - 4 )) && GAP=" "   # tighten the tracker on narrow screens
     at 2 3; out "${P}${B}${SYM_MOON}noctalia${R} ${S}${B}desktop${R}"
-    local right="Arch Linux installer"
+    local right="installer · ${FAMILY_LABEL}"
+    (( ${#right} > COLS / 2 )) && right="${right:0:$(( COLS / 2 - 3 ))}..."
     at 2 $(( COLS - ${#right} - 2 )); out "${D}${right}${R}"
     at 3 3; out "${O}$(rep "─" $(( COLS - 4 )))${R}"
     for name in "${STEPS[@]}"; do
@@ -378,12 +668,12 @@ press_continue() {  # press_continue ROW [label] [allow_back=1]
 # Items are "name|description|value". The choice is left in ANSWER.
 #   return 0 = chosen, 2 = back (Backspace / ←); Esc quits the installer.
 ANSWER=""
-_items_parse() {  # fills _NAME _DESC _VAL and _W (name column width)
-    _NAME=(); _DESC=(); _VAL=(); _W=0
-    local it n d v
+_items_parse() {  # fills _NAME _DESC _VAL _OFF and _W (name column width)
+    _NAME=(); _DESC=(); _VAL=(); _OFF=(); _W=0
+    local it n d v x
     for it in "$@"; do
-        IFS='|' read -r n d v <<< "$it"
-        _NAME+=("$n"); _DESC+=("$d"); _VAL+=("$v")
+        IFS='|' read -r n d v x <<< "$it"
+        _NAME+=("$n"); _DESC+=("$d"); _VAL+=("$v"); _OFF+=("${x:-0}")
         (( ${#n} > _W )) && _W=${#n}
     done
 }
@@ -422,12 +712,16 @@ checklist() {  # checklist ROW "ticked values (space separated)" MIN item...
     local row=$1 ticked=" $2 " min=$3; shift 3
     _items_parse "$@"
     local n=${#_VAL[@]} i sel=0 k line box on=()
-    for i in "${!_VAL[@]}"; do [[ $ticked == *" ${_VAL[i]} "* ]] && on[i]=1 || on[i]=0; done
+    for i in "${!_VAL[@]}"; do [[ $ticked == *" ${_VAL[i]} "* && ${_OFF[i]} -eq 0 ]] && on[i]=1 || on[i]=0; done
+    local note_row=$(( row + n + 1 ))
     hide_cursor
     while true; do
         for i in "${!_VAL[@]}"; do
             if (( on[i] )); then box="${S}${B}${SYM_ON}${R}"; else box="${O}${SYM_OFF}${R}"; fi
-            if (( i == sel )); then
+            if (( _OFF[i] )); then
+                line="$( (( i == sel )) && printf '%s' "${P}${SYM_ARROW}${R}" || printf ' ')"
+                line+=" ${O}${SYM_OFF}${R} ${O}$(printf "%-${_W}s" "${_NAME[i]}")  ${_DESC[i]}${R}"
+            elif (( i == sel )); then
                 line="${P}${B}${SYM_ARROW}${R} ${box} ${P}${B}$(printf "%-${_W}s" "${_NAME[i]}")${R}  ${X}${_DESC[i]}${R}"
             elif (( on[i] )); then
                 line="  ${box} ${S}$(printf "%-${_W}s" "${_NAME[i]}")${R}  ${D}${_DESC[i]}${R}"
@@ -442,10 +736,17 @@ checklist() {  # checklist ROW "ticked values (space separated)" MIN item...
             down|tab) sel=$(( (sel + 1) % n )) ;;
             home)  sel=0 ;;
             end)   sel=$(( n - 1 )) ;;
-            space|char:x) on[sel]=$(( 1 - on[sel] )) ;;
+            space|char:x)
+                if (( _OFF[sel] )); then at "$note_row" 3; out "${E}${SYM_FAIL} ${_NAME[sel]}: ${_DESC[sel]}${R}${EL}"
+                else on[sel]=$(( 1 - on[sel] )); fi ;;
             enter|right)
                 local count=0; for i in "${!_VAL[@]}"; do (( on[i] )) && count=$((count + 1)); done
-                (( min > 0 && count == 0 )) && on[sel]=1   # nothing ticked: take the highlighted one
+                if (( min > 0 && count == 0 )); then   # nothing ticked: take the highlighted one
+                    if (( _OFF[sel] )); then
+                        at "$note_row" 3; out "${E}${SYM_FAIL} ${_NAME[sel]}: ${_DESC[sel]}. Pick another one.${R}${EL}"; continue
+                    fi
+                    on[sel]=1
+                fi
                 ANSWER=""
                 for i in "${!_VAL[@]}"; do (( on[i] )) && ANSWER+="${_VAL[i]} "; done
                 ANSWER=${ANSWER% }
@@ -509,13 +810,23 @@ p_welcome() {
     local laptop dm
     [[ $IS_LAPTOP -eq 1 ]] && laptop="$(pill laptop "$BS")" || laptop="$(pill desktop "$BS")"
     [[ -n $CURRENT_DM ]] && dm="$(pill "$CURRENT_DM" "$BO" "$X")" || dm="$(pill "no login manager" "$BO" "$X")"
-    card 12 \
-        "${P}${SYM_BUL}${R} ${X}Noctalia v5${R}       ${D}bar, launcher, notifications, lock${R}" \
-        "${P}${SYM_BUL}${R} ${X}8 compositors${R}     ${D}niri, Hyprland, Sway, Scroll, Mango, Labwc,${R}" \
-        "                    ${D}Umbriel or KDE Plasma, each preconfigured${R}" \
-        "${P}${SYM_BUL}${R} ${X}Noctalia Greeter${R}  ${D}optional login screen (greetd)${R}" \
-        "${P}${SYM_BUL}${R} ${X}yay or paru${R}       ${D}optional AUR helper${R}"
-    at 20 5; out "${D}Detected${R}  ${laptop} ${dm}"
+    local lines=(
+        "${P}${SYM_BUL}${R} ${X}Noctalia v5${R}       ${D}bar, launcher, notifications, lock${R}"
+        "${P}${SYM_BUL}${R} ${X}8 compositors${R}     ${D}niri, Hyprland, Sway, Scroll, Mango, Labwc,${R}"
+        "                    ${D}Umbriel or KDE Plasma, each preconfigured${R}"
+    )
+    if [[ $CONFIGS_ONLY -eq 1 ]]; then
+        lines+=("${P}${SYM_BUL}${R} ${X}Configs only${R}      ${D}you install the packages yourself${R}")
+    else
+        [[ $GREETER_DISTRO -eq 1 ]] && lines+=("${P}${SYM_BUL}${R} ${X}Noctalia Greeter${R}  ${D}optional login screen (greetd)${R}")
+        if [[ $FAMILY == arch ]]; then lines+=("${P}${SYM_BUL}${R} ${X}yay or paru${R}       ${D}optional AUR helper${R}")
+        else lines+=("${P}${SYM_BUL}${R} ${X}Packages${R}          ${D}from ${FAMILY_LABEL} and Noctalia's repository${R}"); fi
+    fi
+    card 12 "${lines[@]}"
+    at 19 5; out "${D}Detected${R}  $(pill "$FAMILY_LABEL" "$BP") ${laptop} ${dm}"
+    if [[ $CONFIGS_ONLY -eq 1 ]]; then
+        at 20 5; out "${P}Configs only:${R} ${D}${FAMILY_NOTE:0:$(( COLS - 22 ))}${R}"
+    fi
     at 21 5; out "${D}Nothing changes until you confirm the review.${R}"
     press_continue 22 "Get started" 0
 }
@@ -576,30 +887,39 @@ p_desktop() {
     local opts=() row id name aur desc
     for row in "${COMP_TABLE[@]}"; do
         IFS='|' read -r id name _ aur _ desc <<< "$row"
-        [[ -n $aur ]] && desc+="  (AUR)"
-        opts+=("$name|$desc|$id")
+        [[ -n $(comp_aur_pkgs "$id") ]] && desc+="  (AUR)"
+        if [[ ${COMP_OK[$id]:-1} -eq 1 ]]; then opts+=("$name|$desc|$id|0")
+        else opts+=("$name|${COMP_WHY[$id]}|$id|1"); fi
     done
-    screen "Desktop" "Choose your compositor" "Space ticks one or more. Enter alone picks the highlighted one."
+    local sub="Space ticks one or more. Enter alone picks the highlighted one."
+    [[ $CONFIGS_ONLY -eq 1 ]] && sub="Configs only on $FAMILY_LABEL: install the compositor yourself."
+    screen "Desktop" "Choose your compositor" "$sub"
     nav_footer "space" "tick" "enter" "continue"
-    checklist 9 "${COMPS[*]}" 1 "${opts[@]}" || return 2
+    local keep=() c
+    for c in "${COMPS[@]}"; do [[ ${COMP_OK[$c]:-1} -eq 1 ]] && keep+=("$c"); done
+    checklist 9 "${keep[*]}" 1 "${opts[@]}" || return 2
     read -ra COMPS <<< "$ANSWER"
     lid_supported || LID_FIX=0
 }
 
 p_extras() {
-    local opts=(
-        "Noctalia Greeter|login screen with greetd|greeter"
+    local opts=() ticked=""
+    if [[ $GREETER_DISTRO -eq 1 && $CONFIGS_ONLY -eq 0 ]]; then opts+=("Noctalia Greeter|login screen with greetd|greeter")
+    else INSTALL_GREETER=0; fi
+    opts+=(
         "Type-to-launch|type in the overview to open the launcher|launch"
         "Polkit agent|Noctalia asks for app passwords|polkit"
         "File manager and browser|apps for Mod+E and Mod+B|apps"
-    ) ticked=""
-    [[ $IS_LAPTOP -eq 1 ]] && lid_supported && opts+=("Lid lock|lock before suspend on lid close|lid")
+    )
+    [[ $IS_LAPTOP -eq 1 && $HAS_SYSTEMD -eq 1 && $CONFIGS_ONLY -eq 0 ]] && lid_supported && opts+=("Lid lock|lock before suspend on lid close|lid")
     [[ $INSTALL_GREETER -eq 1 ]] && ticked+="greeter "
     [[ $TYPE_TO_LAUNCH -eq 1 ]] && ticked+="launch "
     [[ $POLKIT_AGENT -eq 1 ]] && ticked+="polkit "
     [[ $INSTALL_APPS -eq 1 ]] && ticked+="apps "
     [[ $LID_FIX -eq 1 ]] && ticked+="lid "
-    screen "Extras" "Choose your extras" "Noctalia, portals, audio, fonts and a terminal are always installed."
+    local sub="Noctalia, portals, audio, fonts and a terminal are always installed."
+    [[ $CONFIGS_ONLY -eq 1 ]] && sub="Configs only: these settings go into the configs written."
+    screen "Extras" "Choose your extras" "$sub"
     nav_footer "space" "toggle" "enter" "continue"
     checklist 9 "$ticked" 0 "${opts[@]}" || return 2
     INSTALL_GREETER=0; TYPE_TO_LAUNCH=0; POLKIT_AGENT=0; INSTALL_APPS=0; LID_FIX=0
@@ -613,6 +933,7 @@ p_extras() {
 }
 
 p_aur() {
+    [[ $FAMILY == arch ]] || { AUR_HELPER=none; return 3; }
     local sub opts=() cur errmsg=""
     if needs_aur; then sub="$(aur_comp_names) is only in the AUR, so it needs a helper."
     else sub="Optional. Lets you install AUR packages later."; fi
@@ -713,6 +1034,12 @@ p_review() {
         "$EXISTING_HELPER") aur_txt="$AUR_HELPER ${D}(already installed)${R}" ;;
         *) aur_txt="$AUR_HELPER ${D}(will be installed)${R}" ;;
     esac
+    local row4_label="AUR helper  " row4_txt=$aur_txt
+    [[ $FAMILY != arch ]] && { row4_label="System      "; row4_txt="$FAMILY_LABEL"; }
+    local core_txt
+    if [[ $CONFIGS_ONLY -eq 1 ]]; then core_txt="configs only ${D}(install packages yourself)${R}"
+    elif [[ $FAMILY == arch ]]; then core_txt="noctalia, portals, pipewire, fonts ${D}+ pacman -Syu${R}"
+    else core_txt="noctalia, portals, pipewire, fonts ${D}(${FAMILY_LABEL})${R}"; fi
     local yes_chip="${T}${SYM_DONE} on${R}" off="${D}${SYM_TODO} off${R}" tl pa ll
     [[ $TYPE_TO_LAUNCH -eq 1 ]] && tl=$yes_chip || tl=$off
     [[ $POLKIT_AGENT -eq 1 ]] && pa=$yes_chip || pa=$off
@@ -720,8 +1047,8 @@ p_review() {
     card 8 \
         "${D}User        ${R}${X}${user_txt}${R}" \
         "${D}Desktop     ${R}${X}${desk_txt}${R}" \
-        "${D}Core        ${R}${X}noctalia, portals, pipewire, fonts ${D}+ pacman -Syu${R}" \
-        "${D}AUR helper  ${R}${X}${aur_txt}${R}" \
+        "${D}Core        ${R}${X}${core_txt}${R}" \
+        "${D}${row4_label}${R}${X}${row4_txt}${R}" \
         "${D}Apps        ${R}${X}${apps_txt}${R}" \
         "${D}Keyboard    ${R}${X}${KB_LAYOUT}${R}" \
         "${D}Login       ${R}${X}${greeter_txt}${R}" \
@@ -780,15 +1107,26 @@ plain_decisions() {
         read -r -p "$q" reply </dev/tty || reply=""
         [[ ${reply:-$def} =~ ^[Yy] ]]
     }
+    [[ $GREETER_DISTRO -eq 1 && $CONFIGS_ONLY -eq 0 ]] || INSTALL_GREETER=0
     if [[ $INSTALL_GREETER -eq 1 ]]; then plain_ask "Install Noctalia Greeter (login screen) with greetd?" y || INSTALL_GREETER=0; fi
     if [[ $INSTALL_GREETER -eq 1 && -n $CURRENT_DM ]]; then plain_ask "Disable $CURRENT_DM and use greetd?" y || SWITCH_DM=0; fi
     if [[ $IS_LAPTOP -eq 1 && $LID_FIX -eq 0 ]] && lid_supported; then plain_ask "Laptop detected. Lock before suspend on lid close?" n && LID_FIX=1; fi
     lid_supported || LID_FIX=0
+    [[ $HAS_SYSTEMD -eq 1 && $CONFIGS_ONLY -eq 0 ]] || LID_FIX=0
+    [[ $GREETER_DISTRO -eq 1 && $CONFIGS_ONLY -eq 0 ]] || INSTALL_GREETER=0
+    for c in "${COMPS[@]}"; do
+        [[ ${COMP_OK[$c]:-1} -eq 1 ]] || die "$(comp_field "$c" 2) can't be installed here: ${COMP_WHY[$c]}."
+    done
     [[ $AUR_HELPER == auto ]] && AUR_HELPER="$(default_helper)"
     if [[ $AUR_HELPER == none ]] && needs_aur; then die "$(aur_comp_names) is only in the AUR: use --aur-helper=paru or yay."; fi
     info "Compositors: $(comp_names) | AUR helper: $AUR_HELPER"
     info "User: $TARGET_USER | apps: $([[ $INSTALL_APPS -eq 1 ]] && echo "$TERM_APP $FM_APP $BROWSER_APP" || echo "$TERM_APP") | layout: $KB_LAYOUT"
-    plain_ask "Continue with installation (includes pacman -Syu)?" y || die "Aborted."
+    if [[ $CONFIGS_ONLY -eq 1 ]]; then
+        info "Configs only on $FAMILY_LABEL: $FAMILY_NOTE"
+        plain_ask "Write the configs now?" y || die "Aborted."
+    else
+        plain_ask "Continue with installation on $FAMILY_LABEL?" y || die "Aborted."
+    fi
 }
 
 # =====================================================================
@@ -799,7 +1137,10 @@ INSTALL_STEPS=()
 build_install_steps() {
     INSTALL_STEPS=()
     [[ $CREATE_USER -eq 1 ]] && INSTALL_STEPS+=("user|Create user $TARGET_USER")
-    INSTALL_STEPS+=("pkgs|Install packages")
+    if [[ $CONFIGS_ONLY -eq 0 ]]; then
+        [[ $FAMILY != arch ]] && INSTALL_STEPS+=("repos|Add the Noctalia repository")
+        INSTALL_STEPS+=("pkgs|Install packages")
+    fi
     [[ $AUR_HELPER != none && $AUR_HELPER != "$EXISTING_HELPER" ]] && INSTALL_STEPS+=("helper|Install $AUR_HELPER")
     needs_aur && INSTALL_STEPS+=("aur|Build $(aur_comp_names) from the AUR")
     INSTALL_STEPS+=("files|Write $(comp_names | cut -c1-40) config" "check|Validate configs")
@@ -1004,7 +1345,8 @@ run_steps() {
 
     if [[ $CREATE_USER -eq 1 ]]; then
         progress 2 user "Creating user $TARGET_USER…"
-        pacman -S --needed --noconfirm sudo
+        command -v useradd >/dev/null || die "useradd isn't available here; create the user yourself and run with --user=NAME."
+        command -v sudo >/dev/null || [[ $CONFIGS_ONLY -eq 1 ]] || pm_install "$(pkgs sudo)"
         getent group wheel >/dev/null || groupadd wheel
         useradd -m -G wheel -s /bin/bash "$TARGET_USER"
         printf '%s:%s\n' "$TARGET_USER" "$NEW_USER_PASS" | chpasswd
@@ -1020,33 +1362,66 @@ run_steps() {
     else CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"; fi
     NOCTALIA_DIR="$CONFIG_HOME/noctalia"
 
-    # --- packages from the official repos ---
-    local pkgs=(
-        noctalia
-        xdg-desktop-portal-gtk gnome-keyring
-        pipewire wireplumber pipewire-pulse
-        playerctl brightnessctl
-        noto-fonts noto-fonts-emoji ttf-jetbrains-mono-nerd
-    ) c
-    for c in "${COMPS[@]}"; do
-        # shellcheck disable=SC2207
-        pkgs+=($(comp_field "$c" 3))
-    done
-    pkgs+=("$TERM_APP")   # always: Mod+Return is your way in
-    if [[ $INSTALL_APPS -eq 1 ]]; then
-        [[ $FM_APP != none ]] && pkgs+=("$FM_APP")
-        [[ $BROWSER_APP != none ]] && pkgs+=("$BROWSER_APP")
-    fi
-    [[ $INSTALL_GREETER -eq 1 ]] && pkgs+=(noctalia-greeter)
-    if [[ $INSTALL_GREETER -eq 1 || $POLKIT_AGENT -eq 1 ]]; then pkgs+=(polkit); fi
-    if [[ $AUR_HELPER != none ]]; then pkgs+=(base-devel git); [[ $IS_ROOT -eq 1 ]] && pkgs+=(sudo); fi
-    # de-duplicate
-    mapfile -t pkgs < <(printf '%s\n' "${pkgs[@]}" | awk 'NF && !seen[$0]++')
+    # --- packages ---
+    addp() { local -n _arr=$1; local _t=(); read -ra _t <<< "$2"; _arr+=("${_t[@]}"); }   # addp ARRAY "pkg pkg"
+    if [[ $CONFIGS_ONLY -eq 0 ]]; then
+        if [[ $FAMILY != arch ]]; then
+            run_long 3 8 repos "Adding the Noctalia repository for $FAMILY_LABEL…" setup_repos \
+                || die "Adding the repository failed — see $LOG"
+        fi
 
-    run_long 6 55 pkgs "Upgrading system and installing packages (this can take a while)…" \
-        as_root pacman -Syu --needed --noconfirm "${pkgs[@]}" \
-        || die "pacman failed — see $LOG"
-    ok "Packages installed"
+        local essential=() optional=() backports=() c g p
+        addp essential "$(pkgs noctalia)"
+        for c in "${COMPS[@]}"; do
+            local cp; cp="$(comp_repo_pkgs "$c")"
+            [[ -z $cp ]] && continue
+            essential+=("${cp%% *}")
+            [[ $cp == *" "* ]] && addp optional "${cp#* }"
+        done
+        for g in portal-gtk keyring audio media fonts; do addp optional "$(pkgs "$g")"; done
+        addp essential "$(pkgs "$TERM_APP")"   # always: Mod+Return is your way in
+        if [[ $INSTALL_APPS -eq 1 ]]; then
+            [[ $FM_APP != none ]] && addp optional "$(pkgs "$FM_APP")"
+            [[ $BROWSER_APP != none ]] && addp optional "$(pkgs "$BROWSER_APP")"
+        fi
+        [[ $INSTALL_GREETER -eq 1 ]] && addp essential "$(pkgs greeter)"
+        if [[ $INSTALL_GREETER -eq 1 || $POLKIT_AGENT -eq 1 ]]; then addp optional "$(pkgs polkit)"; fi
+        if [[ $AUR_HELPER != none ]]; then optional+=(base-devel git); [[ $IS_ROOT -eq 1 ]] && optional+=(sudo); fi
+
+        # Debian trixie: the greeter and Umbriel come from trixie-backports.
+        if [[ $FAMILY == debian && $DEB_SUITE == trixie ]]; then
+            local keep=()
+            for p in "${essential[@]}"; do
+                case $p in noctalia-greeter|umbriel|xdg-desktop-portal-umbriel) backports+=("$p") ;; *) keep+=("$p") ;; esac
+            done
+            essential=("${keep[@]}")
+            for p in "${optional[@]}"; do [[ $p == xdg-desktop-portal-umbriel ]] && backports+=("$p"); done
+        fi
+
+        # Look every package up in the repositories: stop on a missing
+        # essential one, skip (and report) missing optional ones.
+        progress 9 pkgs "Checking packages…"
+        local install=() missing=()
+        # The repositories are set up now, so ask the package manager directly.
+        for p in "${essential[@]}"; do
+            pm_has "$p" || die "$p isn't available in your repositories on $FAMILY_LABEL."
+            install+=("$p")
+        done
+        for p in "${optional[@]}"; do
+            [[ " ${backports[*]} " == *" $p "* ]] && continue
+            if pm_has "$p"; then install+=("$p"); else missing+=("$p"); fi
+        done
+        mapfile -t install < <(printf '%s\n' "${install[@]}" | awk 'NF && !seen[$0]++')
+        (( ${#missing[@]} )) && warn "Not in your repositories, skipped: ${missing[*]}"
+
+        run_long 10 55 pkgs "Installing packages (this can take a while)…" pm_install "${install[@]}" \
+            || die "Installing packages failed — see $LOG"
+        if (( ${#backports[@]} )); then
+            as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -t trixie-backports "${backports[@]}" \
+                || die "Installing ${backports[*]} from trixie-backports failed — see $LOG"
+        fi
+        ok "Packages installed"
+    fi
 
     # --- AUR helper and AUR packages ---
     if [[ $AUR_HELPER != none ]]; then
@@ -1068,7 +1443,7 @@ run_steps() {
         aur_sudo_close
     fi
 
-    if pacman -Qq noctalia-shell &>/dev/null || pacman -Qq noctalia-shell-git &>/dev/null; then
+    if [[ $FAMILY == arch ]] && { pacman -Qq noctalia-shell &>/dev/null || pacman -Qq noctalia-shell-git &>/dev/null; }; then
         warn "Noctalia v4 (noctalia-shell) is still installed. Remove it once v5 works: sudo pacman -Rns noctalia-shell noctalia-qs"
     fi
 
@@ -1101,12 +1476,12 @@ run_steps() {
 
     # --- validation (only compositors that can check a config offline) ---
     progress 78 check "Validating configs…"
-    if has_comp niri; then
+    if has_comp niri && command -v niri >/dev/null; then
         if niri validate -c "$CONFIG_HOME/niri/config.kdl"; then ok "niri config is valid"
         else warn "niri validate failed. If it mentions blur or background-effect, update niri. Details in $LOG"; fi
     fi
     for c in sway scroll; do
-        has_comp "$c" || continue
+        has_comp "$c" && command -v "$c" >/dev/null || continue
         if "$c" -C -c "$CONFIG_HOME/$c/config"; then ok "$c config is valid"
         else warn "$c -C reported problems with $CONFIG_HOME/$c/config. Details in $LOG"; fi
     done
@@ -1130,12 +1505,19 @@ run_steps() {
         else
             printf '[terminal]\nvt = 1\n\n[default_session]\n' | as_root tee "$GREETD_CONF" >/dev/null
         fi
-        greetd_set command "$session"
-        greetd_set user "greeter"
-        ok "greetd starts $session as 'greeter'"
-        id greeter &>/dev/null || die "User 'greeter' missing (should come with greetd)."
+        local guser
+        guser="$(as_root awk '/^\[default_session\]/{d=1;next} /^\[/{d=0} d && /^[[:space:]]*user[[:space:]]*=/{gsub(/.*=[[:space:]]*"|".*/,""); print; exit}' "$GREETD_CONF")"
+        if [[ $FAMILY == debian ]]; then
+            ok "Debian's noctalia-greeter package configures greetd itself"
+        else
+            greetd_set command "$session"
+            [[ -z $guser ]] && { greetd_set user "greeter"; guser=greeter; }
+            ok "greetd starts $session as '$guser'"
+        fi
+        guser=${guser:-greeter}
+        id "$guser" &>/dev/null || die "greetd's user '$guser' doesn't exist."
         as_root systemd-tmpfiles --create
-        if as_root noctalia-greeter-apply-appearance --setup-system; then
+        if as_root env GREETER_USER="$guser" noctalia-greeter-apply-appearance --setup-system; then
             ok "Greeter config initialised"
         else
             warn "Greeter setup helper failed; run: sudo noctalia-greeter-apply-appearance --setup-system"
@@ -1155,6 +1537,11 @@ run_steps() {
         fi
     fi
 
+    if [[ $CONFIGS_ONLY -eq 1 ]]; then
+        local need=() c
+        for c in "${COMPS[@]}"; do need+=("$(comp_field "$c" 2)"); done
+        warn "Configs only: ${FAMILY_NOTE} Install Noctalia and ${need[*]} yourself: https://docs.noctalia.dev/noctalia/getting-started/installation/"
+    fi
     progress 100 "done" "Done."
 }
 
@@ -1221,12 +1608,14 @@ scr_done() {
     local login
     local first_name first_cmd
     first_name="$(comp_field "${COMPS[0]}" 2)"; first_cmd="$(comp_field "${COMPS[0]}" 5)"
-    if [[ $GREETER_ENABLED -eq 1 ]]; then login="Reboot, pick ${P}${first_name}${R}${X} (or another session) in Noctalia Greeter"
+    if [[ $CONFIGS_ONLY -eq 1 ]]; then login="Configs written. Install Noctalia and ${P}${first_name}${R}${X}, then run ${P}${first_cmd}${R}"
+    elif [[ $GREETER_ENABLED -eq 1 ]]; then login="Reboot, pick ${P}${first_name}${R}${X} (or another session) in Noctalia Greeter"
     elif [[ -n $CURRENT_DM ]]; then login="Log out and pick ${P}${first_name}${R}${X} in ${CURRENT_DM}"
     else login="Log in on a TTY as ${P}${TARGET_USER}${R}${X} and run ${P}${first_cmd}${R}"; fi
 
     cls; header "__all_done__"   # an unknown step name marks every step as done
-    at 6 3; out "${T}${B}${SYM_DONE} Your Noctalia desktop is ready${R}"
+    if [[ $CONFIGS_ONLY -eq 1 ]]; then at 6 3; out "${T}${B}${SYM_DONE} Your Noctalia configs are ready${R}"
+    else at 6 3; out "${T}${B}${SYM_DONE} Your Noctalia desktop is ready${R}"; fi
     at 7 3; out "${X}${login}${R}"
     keyrow() {  # keyrow KEY LABEL KEY LABEL -> two aligned columns
         local a; a="$(pill "$1" "$BS") ${X}$2${R}"
@@ -1263,6 +1652,7 @@ scr_done() {
 : > "$LOG"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
 
+check_comp_availability
 init_ui
 if [[ $UI == tui ]]; then tui_decisions; else plain_decisions; fi
 
@@ -1270,7 +1660,7 @@ INSTALL_STARTED=1
 build_install_steps
 
 if [[ $UI == tui ]]; then
-    [[ $IS_ROOT -eq 0 ]] && SUDO=(sudo -n)   # sudo must never prompt behind the UI
+    [[ $IS_ROOT -eq 0 && $CONFIGS_ONLY -eq 0 ]] && SUDO=(sudo -n)   # sudo must never prompt behind the UI
     trap '' INT                              # don't abort halfway through pacman
     set +e
     ( run_steps ) >>"$LOG" 2>&1 &
