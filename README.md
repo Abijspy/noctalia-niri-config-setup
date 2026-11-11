@@ -1,6 +1,8 @@
 # noctalia-niri-config-setup
 
-niri config for the Noctalia v5 shell. Blur is on for all shell surfaces, for apps and in the overview.
+niri config for the Noctalia v5 shell. Blur is on for all shell surfaces, for apps and in the overview. It comes with an Arch Linux installer that uses Noctalia's own colors.
+
+![The installer's welcome screen](docs/screenshots/welcome.png)
 
 ## Quick install (Arch Linux)
 
@@ -18,9 +20,24 @@ cd noctalia-niri-config-setup
 ./install.sh
 ```
 
-### The TUI installer
+### The installer
 
-The installer opens full-screen menus (whiptail). It installs `libnewt` (the package that provides whiptail) automatically if it's missing, and the menus fit a standard 80×24 console.
+The installer is a full-screen terminal UI built with [gum](https://github.com/charmbracelet/gum). It uses the colors of Noctalia's built-in palette: navy surface, yellow primary, lavender secondary and mint accents. If gum is missing, the installer installs it first. On a bare Linux console it temporarily switches the console to the Noctalia palette and uses symbols the console font can draw. The original palette comes back when the installer exits.
+
+| | |
+|---|---|
+| ![Choosing components](docs/screenshots/components.png) | ![Choosing a terminal](docs/screenshots/apps.png) |
+| **Components:** tick the extras you want | **Apps:** pick a terminal, file manager and browser |
+| ![Review screen](docs/screenshots/review.png) | ![Installing](docs/screenshots/installing.png) |
+| **Review:** nothing changes until you choose *Install now* | **Install:** live steps, progress bar and the latest log lines |
+
+![Finished screen](docs/screenshots/done.png)
+
+On a minimal install, straight from the TTY:
+
+![The installer on the Linux console](docs/screenshots/tty.png)
+
+<sub>Screenshots are rendered from a test run, so the install log shows placeholder package names.</sub>
 
 **Controls**
 
@@ -28,20 +45,21 @@ The installer opens full-screen menus (whiptail). It installs `libnewt` (the pac
 |---|---|
 | `↑` / `↓` | Move between options |
 | `Enter` | Continue (picks the highlighted option) |
-| `Space` | Toggle an item on the Components screen |
-| `←` / `→` or `Tab` | Switch buttons (Yes / No, Continue / Quit) |
-| `Esc` | Quit the installer. Nothing is changed before you confirm the Summary screen |
+| `Space` | Tick or untick an item on the Components screen |
+| `Esc` | Quit the installer. Nothing changes before you choose *Install now* |
+
+**Screens**
 
 1. **Welcome:** shows whether it found a laptop and an existing login manager.
 2. **User:** only when run as root. Pick an existing user or create a new one. A new user is added to `wheel`, and `sudo` is installed and enabled for that group.
 3. **Components:** apps, Noctalia Greeter, overview type-to-launch, Noctalia's polkit agent, and the lid-close lock (laptops only).
 4. **Apps:** terminal (alacritty, kitty, foot, ghostty or wezterm), file manager (nautilus, thunar, dolphin, nemo or none) and browser (firefox, chromium or none). The keybinds in the config are updated to match.
-5. **Keyboard layout:** written into the niri config, e.g. `us` or `us,de`.
-6. **Login manager:** if gdm, sddm or lightdm is active, it asks before replacing it with greetd.
-7. **Summary:** nothing changes until you confirm here.
-8. **Progress bar,** then a final screen and an offer to reboot.
+5. **Keyboard:** the layout is written into the niri config, e.g. `us` or `us,de`.
+6. **Review:** if gdm, sddm or lightdm is active, it first asks whether to replace it with greetd. Then you can install, go back and change your choices, or quit.
+7. **Install:** each step is shown as it runs, with a progress bar and the latest log lines. Keys are ignored during this step so it can't be stopped halfway.
+8. **Done:** the main keybinds, any notes, and an offer to reboot.
 
-If something fails, it shows the last lines of the log. The full log is at `/tmp/noctalia-niri-install.log`.
+If something fails, the installer shows the last lines of the log. The full log is at `/tmp/noctalia-niri-install.log`.
 
 ### What gets installed
 
