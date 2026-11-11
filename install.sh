@@ -22,7 +22,7 @@
 #    --user=NAME                      # user to set up (when run as root)
 #    --terminal=alacritty|kitty|foot|ghostty|wezterm
 #    --file-manager=nautilus|thunar|dolphin|nemo|none
-#    --browser=firefox|chromium|none
+#    --browser=firefox|librewolf|brave|mullvad|tor|ungoogled|zen|chromium|none
 #    --layout=us                      # keyboard layout(s), e.g. us,de
 #    --no-apps                        # skip file manager and browser
 #    --no-greeter                     # skip Noctalia Greeter + greetd
@@ -85,7 +85,7 @@ check_opt() {  # check_opt name value allowed...
 }
 check_opt terminal     "$TERM_APP"    alacritty kitty foot ghostty wezterm
 check_opt file-manager "$FM_APP"      nautilus thunar dolphin nemo none
-check_opt browser      "$BROWSER_APP" firefox chromium none
+check_opt browser      "$BROWSER_APP" firefox librewolf brave mullvad tor ungoogled zen chromium none
 [[ $KB_LAYOUT =~ ^[a-z]{2,}(,[a-z]{2,})*$ ]] || { echo "Invalid --layout=$KB_LAYOUT (e.g. us or us,de)"; exit 1; }
 check_opt aur-helper   "$AUR_HELPER"  auto paru yay none
 
@@ -121,6 +121,28 @@ aur_comp_names() { local c n=(); for c in "${COMPS[@]}"; do [[ -n $(comp_aur_pkg
 comp_names()    { local c n=(); for c in "${COMPS[@]}"; do n+=("$(comp_field "$c" 2)"); done; local IFS=,; echo "${n[*]}" | sed 's/,/, /g'; }
 # Lid lock is wired up only in configs that can bind the lid switch.
 lid_supported() { local c; for c in "${COMPS[@]}"; do case $c in niri|sway|scroll) ;; *) return 1 ;; esac; done; return 0; }
+
+# ---------- browsers ----------
+# id | name | description | Arch repo pkg | Arch AUR pkg | native pkg elsewhere | binaries to look for | Flathub id
+BROWSER_TABLE=(
+    "firefox|Firefox|Mozilla|firefox||firefox|firefox firefox-bin|org.mozilla.firefox"
+    "librewolf|LibreWolf|Firefox fork with privacy defaults||librewolf-bin|librewolf|librewolf|io.gitlab.librewolf-community"
+    "brave|Brave|Chromium with ad and tracker blocking||brave-bin|brave-browser|brave brave-browser|com.brave.Browser"
+    "mullvad|Mullvad Browser|anti-fingerprinting, no Tor||mullvad-browser-bin|mullvad-browser|mullvad-browser|net.mullvad.MullvadBrowser"
+    "tor|Tor Browser|browses over the Tor network|torbrowser-launcher||torbrowser-launcher|torbrowser-launcher|org.torproject.torbrowser-launcher"
+    "ungoogled|Ungoogled Chromium|Chromium without Google services||ungoogled-chromium-bin|ungoogled-chromium|ungoogled-chromium chromium|io.github.ungoogled_software.ungoogled_chromium"
+    "zen|Zen Browser|Firefox-based · vertical tabs||zen-browser-bin|zen-browser|zen-browser zen|app.zen_browser.zen"
+    "chromium|Chromium|open-source Chrome|chromium||chromium|chromium chromium-browser|org.chromium.Chromium"
+)
+browser_field() {  # browser_field ID FIELD_NUMBER
+    local row
+    for row in "${BROWSER_TABLE[@]}"; do
+        [[ ${row%%|*} == "$1" ]] && { cut -d'|' -f"$2" <<< "$row"; return 0; }
+    done
+    return 1
+}
+FLATPAK_BIN=/var/lib/flatpak/exports/bin
+BROWSER_CMD=""   # what Mod+B runs; set once the browser is installed
 
 EXISTING_HELPER=""
 for h in paru yay; do command -v "$h" >/dev/null && { EXISTING_HELPER=$h; break; }; done
@@ -291,6 +313,23 @@ from_added_repo() {
         void:noctalia|alpine:noctalia|chimera:noctalia|gentoo:gui-apps/noctalia) return 0 ;;
     esac
     return 1
+}
+
+# Where a browser will come from here: repo, aur or flatpak.
+browser_source() {  # browser_source ID
+    local id=$1 native aur
+    [[ $id == none ]] && { echo none; return; }
+    if [[ $FAMILY == arch ]]; then
+        native="$(browser_field "$id" 4)"; aur="$(browser_field "$id" 5)"
+        if [[ -n $native ]] && pm_has "$native"; then echo repo; return; fi
+        if [[ -n $aur && $AUR_HELPER != none && $AUR_HELPER != auto ]]; then echo aur; return; fi
+        if [[ -n $aur && $AUR_HELPER == auto && -n $EXISTING_HELPER ]]; then echo aur; return; fi
+        echo flatpak; return
+    fi
+    native="$(browser_field "$id" 6)"
+    [[ $FAMILY == gentoo ]] && native="$(pkgs "$id")"   # Gentoo atoms: only Firefox and Chromium
+    if [[ -n $native ]] && pm_has "$native"; then echo repo; return; fi
+    echo flatpak
 }
 
 # ---------- package manager ----------
@@ -668,6 +707,12 @@ press_continue() {  # press_continue ROW [label] [allow_back=1]
 # Items are "name|description|value". The choice is left in ANSWER.
 #   return 0 = chosen, 2 = back (Backspace / ←); Esc quits the installer.
 ANSWER=""
+fit() {  # fit TEXT MAX — shorten to MAX columns
+    local t=$1 m=$2
+    (( ${#t} <= m )) && { printf '%s' "$t"; return; }
+    if [[ $IS_CONSOLE -eq 1 ]]; then printf '%s..' "${t:0:m-2}"; else printf '%s…' "${t:0:m-1}"; fi
+}
+
 _items_parse() {  # fills _NAME _DESC _VAL _OFF and _W (name column width)
     _NAME=(); _DESC=(); _VAL=(); _OFF=(); _W=0
     local it n d v x
@@ -676,6 +721,9 @@ _items_parse() {  # fills _NAME _DESC _VAL _OFF and _W (name column width)
         _NAME+=("$n"); _DESC+=("$d"); _VAL+=("$v"); _OFF+=("${x:-0}")
         (( ${#n} > _W )) && _W=${#n}
     done
+    # descriptions: whatever fits after "› ◉ name  " on this screen
+    local i max=$(( COLS - 4 - 4 - _W - 2 - 1 ))
+    for i in "${!_DESC[@]}"; do _DESC[i]="$(fit "${_DESC[i]}" "$max")"; done
 }
 
 menu() {  # menu ROW CURRENT_VALUE item...
@@ -936,7 +984,7 @@ p_aur() {
     [[ $FAMILY == arch ]] || { AUR_HELPER=none; return 3; }
     local sub opts=() cur errmsg=""
     if needs_aur; then sub="$(aur_comp_names) is only in the AUR, so it needs a helper."
-    else sub="Optional. Lets you install AUR packages later."; fi
+    else sub="Optional. AUR browsers use it; without one they come from Flathub."; fi
     [[ -n $EXISTING_HELPER ]] && opts+=("Use installed $EXISTING_HELPER|already on this system|$EXISTING_HELPER")
     [[ $EXISTING_HELPER != paru ]] && opts+=("paru|fast · written in Rust|paru")
     [[ $EXISTING_HELPER != yay ]] && opts+=("yay|popular · written in Go|yay")
@@ -982,12 +1030,23 @@ p_fm() {
 
 p_browser() {
     [[ $INSTALL_APPS -eq 1 ]] || return 3
-    screen "Apps" "Browser" "Opens with Mod+B."
+    local opts=() row id name desc src tag
+    for row in "${BROWSER_TABLE[@]}"; do
+        IFS='|' read -r id name desc _ <<< "$row"
+        tag=""
+        if [[ $CONFIGS_ONLY -eq 0 ]]; then
+            src="$(browser_source "$id")"
+            case $src in
+                aur) tag="  (AUR)" ;;
+                flatpak) tag="  (Flathub)"; [[ $id == mullvad ]] && tag="  (Flathub, unofficial)" ;;
+            esac
+        fi
+        opts+=("$name|$desc$tag|$id")
+    done
+    opts+=("None|leave Mod+B unbound|none")
+    screen "Apps" "Browser" "Opens with Mod+B. Your distribution's package is used when there is one."
     nav_footer "enter" "select"
-    menu 9 "$BROWSER_APP" \
-        "Firefox|Mozilla|firefox" \
-        "Chromium|open-source Chrome|chromium" \
-        "None|leave Mod+B unbound|none" || return 2
+    menu 9 "$BROWSER_APP" "${opts[@]}" || return 2
     BROWSER_APP=$ANSWER
 }
 
@@ -1022,7 +1081,10 @@ p_review() {
     screen "Review" "Ready to install" "Check your choices. Nothing has changed yet."
     local user_txt="$TARGET_USER" apps_txt="$TERM_APP" greeter_txt desk_txt aur_txt
     [[ $CREATE_USER -eq 1 ]] && user_txt="$TARGET_USER ${D}(new, sudo)${R}"
-    [[ $INSTALL_APPS -eq 1 ]] && apps_txt="$TERM_APP, $FM_APP, $BROWSER_APP"
+    if [[ $INSTALL_APPS -eq 1 ]]; then
+        local bname="none"; [[ $BROWSER_APP != none ]] && bname="$(browser_field "$BROWSER_APP" 2)"
+        apps_txt="$TERM_APP, $FM_APP, $bname"
+    fi
     if [[ $INSTALL_GREETER -eq 0 ]]; then greeter_txt="${D}off${R}"
     elif [[ -n $CURRENT_DM && $SWITCH_DM -eq 0 ]]; then greeter_txt="installed ${D}(keeps $CURRENT_DM)${R}"
     elif [[ -n $CURRENT_DM ]]; then greeter_txt="Noctalia Greeter ${D}(replaces $CURRENT_DM)${R}"
@@ -1143,6 +1205,9 @@ build_install_steps() {
     fi
     [[ $AUR_HELPER != none && $AUR_HELPER != "$EXISTING_HELPER" ]] && INSTALL_STEPS+=("helper|Install $AUR_HELPER")
     needs_aur && INSTALL_STEPS+=("aur|Build $(aur_comp_names) from the AUR")
+    if [[ $INSTALL_APPS -eq 1 && $BROWSER_APP != none && $CONFIGS_ONLY -eq 0 ]]; then
+        INSTALL_STEPS+=("browser|Install $(browser_field "$BROWSER_APP" 2) ($(browser_source "$BROWSER_APP"))")
+    fi
     INSTALL_STEPS+=("files|Write $(comp_names | cut -c1-40) config" "check|Validate configs")
     [[ $LID_FIX -eq 1 ]] && INSTALL_STEPS+=("lid|Configure lid close")
     if [[ $INSTALL_GREETER -eq 1 ]]; then INSTALL_STEPS+=("greeter|Set up Noctalia Greeter" "dm|Enable the login screen"); fi
@@ -1233,7 +1298,9 @@ get_cfg() {  # get_cfg REPO_PATH DEST  — from the clone, or download it
 apply_apps() {  # apply_apps FILE STYLE
     local f=$1 style=$2 app def
     sed -i "s/\balacritty\b/$TERM_APP/g" "$f"
-    for def in nautilus:$FM_APP firefox:$BROWSER_APP; do
+    local bcmd=${BROWSER_CMD:-$BROWSER_APP}
+    [[ $BROWSER_APP == none ]] && bcmd=none
+    for def in nautilus:$FM_APP "firefox:$bcmd"; do
         app=${def#*:}; def=${def%%:*}
         if [[ $app == none ]]; then
             case $style in
@@ -1243,7 +1310,7 @@ apply_apps() {  # apply_apps FILE STYLE
                 xml)  sed -i "/\b$def\b/ s|^\(.*\)$|<!-- \1 -->|" "$f" ;;
             esac
         else
-            sed -i "s/\b$def\b/$app/g" "$f"
+            sed -i "s|\b$def\b|$app|g" "$f"
         fi
     done
 }
@@ -1321,6 +1388,39 @@ write_comp_config() {  # write_comp_config ID
 aur_sudo_open()  { [[ $IS_ROOT -eq 1 ]] || return 0; echo "$TARGET_USER ALL=(ALL:ALL) NOPASSWD: ALL" > "$SUDOERS_TMP"; chmod 440 "$SUDOERS_TMP"; }
 aur_sudo_close() { [[ $IS_ROOT -eq 1 ]] || return 0; rm -f "$SUDOERS_TMP"; }
 
+install_browser() {
+    local id=$BROWSER_APP src pkg bin fp
+    src="$(browser_source "$id")"
+    case $src in
+        repo)
+            if [[ $FAMILY == arch ]]; then pkg="$(browser_field "$id" 4)"
+            elif [[ $FAMILY == gentoo ]]; then pkg="$(pkgs "$id")"
+            else pkg="$(browser_field "$id" 6)"; fi
+            pm_install "$pkg" ;;
+        aur)
+            aur_sudo_open
+            aur_install "$(browser_field "$id" 5)" || { aur_sudo_close; return 1; }
+            aur_sudo_close ;;
+        flatpak)
+            fp="$(browser_field "$id" 8)"
+            command -v flatpak >/dev/null || pm_install "$( [[ $FAMILY == gentoo ]] && echo sys-apps/flatpak || echo flatpak )"
+            as_root flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+            as_root flatpak install -y --noninteractive flathub "$fp"
+            BROWSER_CMD="$FLATPAK_BIN/$fp"; echo "$BROWSER_CMD" > "$TMP_DIR/browser_cmd"
+            ok "Installed $(browser_field "$id" 2) from Flathub ($fp)"
+            [[ $id == mullvad ]] && warn "Mullvad Browser's Flatpak is a community build, not made by Mullvad."
+            return 0 ;;
+    esac
+    # Native package: use whichever of its known commands exists.
+    for bin in $(browser_field "$id" 7); do
+        if command -v "$bin" >/dev/null || [[ -x /usr/bin/$bin ]]; then BROWSER_CMD=$bin; break; fi
+    done
+    [[ -n $BROWSER_CMD ]] || { BROWSER_CMD="$(browser_field "$id" 7)"; BROWSER_CMD=${BROWSER_CMD%% *}
+        warn "Couldn't find the $(browser_field "$id" 2) command after installing; Mod+B runs '$BROWSER_CMD'."; }
+    echo "$BROWSER_CMD" > "$TMP_DIR/browser_cmd"
+    ok "Installed $(browser_field "$id" 2) ($src): Mod+B runs $BROWSER_CMD"
+}
+
 install_aur_helper() {
     local d; d="$(mktemp -d)"
     [[ $IS_ROOT -eq 1 ]] && chown "$TARGET_USER:$TARGET_GROUP" "$d"
@@ -1382,7 +1482,6 @@ run_steps() {
         addp essential "$(pkgs "$TERM_APP")"   # always: Mod+Return is your way in
         if [[ $INSTALL_APPS -eq 1 ]]; then
             [[ $FM_APP != none ]] && addp optional "$(pkgs "$FM_APP")"
-            [[ $BROWSER_APP != none ]] && addp optional "$(pkgs "$BROWSER_APP")"
         fi
         [[ $INSTALL_GREETER -eq 1 ]] && addp essential "$(pkgs greeter)"
         if [[ $INSTALL_GREETER -eq 1 || $POLKIT_AGENT -eq 1 ]]; then addp optional "$(pkgs polkit)"; fi
@@ -1441,6 +1540,16 @@ run_steps() {
             ok "Built ${aurp[*]}"
         fi
         aur_sudo_close
+    fi
+
+    # --- browser: distribution package, AUR (Arch), or Flathub ---
+    if [[ $INSTALL_APPS -eq 1 && $BROWSER_APP != none && $CONFIGS_ONLY -eq 0 ]]; then
+        run_long 72 73 browser "Installing $(browser_field "$BROWSER_APP" 2)…" install_browser \
+            || die "Installing the browser failed — see $LOG"
+        # run_long may run it in the background, so the command comes back via a file
+        BROWSER_CMD="$(cat "$TMP_DIR/browser_cmd" 2>/dev/null)"
+    elif [[ $BROWSER_APP != none ]]; then
+        BROWSER_CMD="$(browser_field "$BROWSER_APP" 7)"; BROWSER_CMD=${BROWSER_CMD%% *}
     fi
 
     if [[ $FAMILY == arch ]] && { pacman -Qq noctalia-shell &>/dev/null || pacman -Qq noctalia-shell-git &>/dev/null; }; then

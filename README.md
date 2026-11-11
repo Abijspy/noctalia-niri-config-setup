@@ -28,8 +28,8 @@ The installer is a full-screen terminal UI written in plain bash, so it needs no
 |---|---|
 | ![Choosing compositors](docs/screenshots/desktop.png) | ![Choosing an AUR helper](docs/screenshots/aur.png) |
 | **Desktop:** pick one or more compositors | **AUR helper:** paru, yay, an installed one, or none |
-| ![Choosing extras](docs/screenshots/components.png) | ![Choosing a terminal](docs/screenshots/apps.png) |
-| **Extras:** greeter, type-to-launch, polkit agent, apps | **Apps:** terminal, file manager and browser |
+| ![Choosing extras](docs/screenshots/components.png) | ![Choosing a browser](docs/screenshots/browser.png) |
+| **Extras:** greeter, type-to-launch, polkit agent, apps | **Apps:** terminal, file manager and browser, including privacy browsers |
 | ![Review screen](docs/screenshots/review.png) | ![Installing](docs/screenshots/installing.png) |
 | **Review:** nothing changes until you choose *Install now* | **Install:** live steps, progress bar and the latest log lines |
 
@@ -63,7 +63,12 @@ On other distributions, compositors your distribution doesn't package are greyed
 4. **Extras:** Noctalia Greeter, overview type-to-launch, Noctalia's polkit agent, file manager and browser, and the lid-close lock (laptops only, and only with niri, Sway or Scroll). Then the **AUR helper**:
    - keep yay or paru if one is already installed, install **paru** or **yay**, or skip it;
    - Scroll and Umbriel are only in the AUR, so they need a helper.
-5. **Apps:** terminal (alacritty, kitty, foot, ghostty or wezterm), file manager (nautilus, thunar, dolphin, nemo or none) and browser (firefox, chromium or none). The keybinds in every config are updated to match.
+5. **Apps:**
+   - terminal: alacritty, kitty, foot, ghostty or wezterm;
+   - file manager: nautilus, thunar, dolphin, nemo or none;
+   - browser: Firefox, LibreWolf, Brave, Mullvad Browser, Tor Browser, Ungoogled Chromium, Zen Browser, Chromium or none (see [Browsers](#browsers)).
+
+   The keybinds in every config are updated to match.
 6. **Keyboard:** the layout is written into each compositor's config, e.g. `us` or `us,de`.
 7. **Review:** if gdm, sddm or lightdm is active, it first asks whether to replace it with greetd. Then you can install, go back and change your choices, or quit.
 8. **Install:** each step is shown as it runs, with a progress bar and the latest log lines. Keys are ignored during this step so it can't be stopped halfway.
@@ -132,6 +137,31 @@ What to know about each one:
 - **Umbriel:** contains only the settings and keys documented on Noctalia's Umbriel page plus the app keys; window management uses Umbriel's own defaults. The keyboard layout isn't set, because that setting isn't documented.
 - **KDE Plasma:** Noctalia is started through Plasma's autostart. Plasma has no blur for Noctalia, and no screenshots, clipboard history or night light from Noctalia. Set shortcuts (`noctalia msg …`) in System Settings.
 
+## Browsers
+
+Firefox and Chromium plus privacy-focused browsers. Each one comes from the first source available:
+
+1. your distribution's repositories;
+2. on Arch, the AUR, if you have yay/paru or chose to install one;
+3. otherwise [Flathub](https://flathub.org) (installs `flatpak` and adds the Flathub remote).
+
+The browser screen shows which source will be used, and Mod+B launches whatever was installed.
+
+| Browser | Arch | Flathub |
+|---|---|---|
+| Firefox | `firefox` | `org.mozilla.firefox` |
+| LibreWolf | `librewolf-bin` (AUR) | `io.gitlab.librewolf-community` |
+| Brave | `brave-bin` (AUR) | `com.brave.Browser` |
+| Mullvad Browser | `mullvad-browser-bin` (AUR) | `net.mullvad.MullvadBrowser` (community build) |
+| Tor Browser | `torbrowser-launcher` | `org.torproject.torbrowser-launcher` |
+| Ungoogled Chromium | `ungoogled-chromium-bin` (AUR) | `io.github.ungoogled_software.ungoogled_chromium` |
+| Zen Browser | `zen-browser-bin` (AUR) | `app.zen_browser.zen` |
+| Chromium | `chromium` | `org.chromium.Chromium` |
+
+- **Other distributions:** the installer looks for a package named like the browser (e.g. `librewolf`, `brave-browser`, `torbrowser-launcher`) and falls back to Flathub when it isn't there.
+- **Vendor preferences:** Brave recommends its native package over the Flatpak.
+- **Mullvad's Flatpak** is a community wrapper, not made by Mullvad.
+
 ## What gets installed
 
 - `noctalia` (v5), portals, PipeWire, `playerctl`, `brightnessctl`, fonts, and the packages for each compositor you pick, under your distribution's package names. On Arch this runs a full `pacman -Syu`.
@@ -158,7 +188,7 @@ What to know about each one:
 | `--user=NAME` | User to set up when run as root |
 | `--terminal=…` | `alacritty` `kitty` `foot` `ghostty` `wezterm` |
 | `--file-manager=…` | `nautilus` `thunar` `dolphin` `nemo` `none` |
-| `--browser=…` | `firefox` `chromium` `none` |
+| `--browser=…` | `firefox` `librewolf` `brave` `mullvad` `tor` `ungoogled` `zen` `chromium` `none` |
 | `--layout=…` | Keyboard layout(s), e.g. `us,de` |
 | `--no-apps` | Skip the file manager and browser (a terminal is always installed) |
 | `--no-greeter` | Skip Noctalia Greeter and greetd |
