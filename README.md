@@ -107,7 +107,7 @@ The installer reads `/etc/os-release`, adds Noctalia's repository the way [Nocta
 | Compositor | Package (Arch) | Config written | Start from a TTY |
 |---|---|---|---|
 | niri | `niri` | `~/.config/niri/config.kdl` | `niri-session` |
-| Hyprland | `hyprland` | `~/.config/hypr/hyprland.lua` | `Hyprland` |
+| Hyprland | `hyprland` | `~/.config/hypr/hyprland.lua` | `start-hyprland` |
 | Sway | `sway` | `~/.config/sway/config` | `sway` |
 | Scroll | `sway-scroll` (AUR) | `~/.config/scroll/config` | `scroll` |
 | Mango | `mangowm` | `~/.config/mango/config.conf` | `mango` |

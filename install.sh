@@ -94,7 +94,7 @@ check_opt aur-helper   "$AUR_HELPER"  auto paru yay none
 # id | name | repo packages | AUR packages | start command | description (no commas)
 COMP_TABLE=(
     "niri|niri|niri xwayland-satellite xdg-desktop-portal-gnome||niri-session|scrollable tiling · blur · overview"
-    "hyprland|Hyprland|hyprland xdg-desktop-portal-hyprland xorg-xwayland||Hyprland|dynamic tiling · Lua config"
+    "hyprland|Hyprland|hyprland xdg-desktop-portal-hyprland xorg-xwayland||start-hyprland|dynamic tiling · Lua config"
     "sway|Sway|sway xdg-desktop-portal-wlr xorg-xwayland||sway|i3-style tiling"
     "scroll|Scroll|xdg-desktop-portal-wlr xorg-xwayland|sway-scroll|scroll|Sway with a scrolling layout"
     "mango|Mango|mangowm xdg-desktop-portal-wlr xorg-xwayland||mango|dwl-based tiling with tags"
