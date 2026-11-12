@@ -129,7 +129,7 @@ Every config starts Noctalia, includes the Noctalia settings from its [composito
 
 What to know about each one:
 
-- **niri:** blur everywhere, including the focused window (`draw-border-with-background false`, so the focus ring doesn't paint over the blur), and a blurred overview wallpaper. Noctalia settings opens fullscreen. Needs niri 26.04 or newer for `background-effect` / `blur`.
+- **niri:** blur everywhere, including the focused window (`draw-border-with-background false`, so the focus ring doesn't paint over the blur), and a blurred overview wallpaper. Noctalia settings opens as a maximized column (not fullscreen, so its blur stays). Needs niri 26.04 or newer for `background-effect` / `blur`.
 - **Hyprland:** uses Hyprland's Lua config (`hyprland.lua`), the format Noctalia documents. An existing `hyprland.conf` is moved aside to a dated backup.
 - **Sway / Scroll:** the same config, with Scroll reading its own `config.d` folder. Sway and Scroll can't blur Noctalia's surfaces.
 - **Mango:** window blur on, layer blur off, as Noctalia recommends. Noctalia's docs also suggest turning off Noctalia's own shadows under Mango (`shadow = false` for `[bar.default]`, `[dock]` and `[shell.panel]`); the installer doesn't, because that setting would affect every compositor.

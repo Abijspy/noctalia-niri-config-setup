@@ -116,10 +116,11 @@ window-rule {
     draw-border-with-background false
 }
 
-// Noctalia settings opens fullscreen (Mod+Shift+F toggles it back).
+// Noctalia settings opens as a maximized column: big, but a normal
+// window, so blur stays (fullscreen would cover it). Mod+F toggles it.
 window-rule {
     match app-id="dev.noctalia.Noctalia"
-    open-fullscreen true
+    open-maximized true
 }
 
 window-rule {
