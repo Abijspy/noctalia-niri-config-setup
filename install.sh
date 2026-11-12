@@ -29,6 +29,8 @@
 #    --no-greeter                     # skip Noctalia Greeter + greetd
 #    --lid-fix                        # lock before suspend on lid close
 #    --stock-bar                      # keep Noctalia's default bar (no bar preset)
+#    --wallpaper=moonrise|aurora|dunes|waves|nebula|orbit|none
+#                                     # bundled wallpaper to use (none: Noctalia's own)
 #
 #  Straight from GitHub:
 #    curl -fsSL https://raw.githubusercontent.com/Abijspy/noctalia-niri-config-setup/main/install.sh | bash
@@ -48,6 +50,7 @@ LID_FIX=0
 TYPE_TO_LAUNCH=1
 POLKIT_AGENT=1
 BAR_PRESET=1
+WALLPAPER="moonrise"
 SWITCH_DM=1
 TARGET_USER=""
 NEW_USER_PASS=""
@@ -60,7 +63,7 @@ COMPOSITORS="niri"
 COMPS_FROM_FLAG=0
 AUR_HELPER="auto"
 
-usage() { sed -n '3,35p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '3,37p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
 
 for arg in "$@"; do
     case "$arg" in
@@ -70,6 +73,7 @@ for arg in "$@"; do
         --no-greeter)      INSTALL_GREETER=0 ;;
         --lid-fix)         LID_FIX=1 ;;
         --stock-bar)       BAR_PRESET=0 ;;
+        --wallpaper=*)     WALLPAPER="${arg#*=}" ;;
         --user=*)          TARGET_USER="${arg#*=}" ;;
         --terminal=*)      TERM_APP="${arg#*=}" ;;
         --file-manager=*)  FM_APP="${arg#*=}" ;;
@@ -92,6 +96,18 @@ check_opt file-manager "$FM_APP"      nautilus dolphin thunar nemo caja pcmanfm 
 check_opt browser      "$BROWSER_APP" firefox librewolf brave mullvad tor ungoogled zen chromium none
 [[ $KB_LAYOUT =~ ^[a-z]{2,}(,[a-z]{2,})*$ ]] || { echo "Invalid --layout=$KB_LAYOUT (e.g. us or us,de)"; exit 1; }
 check_opt aur-helper   "$AUR_HELPER"  auto paru yay none
+check_opt wallpaper    "$WALLPAPER"   moonrise aurora dunes waves nebula orbit none
+WALLPAPERS_ON=1; [[ $WALLPAPER == none ]] && { WALLPAPERS_ON=0; WALLPAPER=moonrise; }
+
+# Bundled wallpapers (configs/wallpapers/noctalia-<id>.jpg): id | description
+WALLPAPER_TABLE=(
+    "moonrise|crescent moon over deep navy"
+    "aurora|mint and lavender aurora"
+    "dunes|layered hills under a low moon"
+    "waves|flowing lavender lines"
+    "nebula|soft colour clouds"
+    "orbit|minimal concentric rings"
+)
 
 # ---------- compositors Noctalia supports ----------
 # id | name | repo packages | AUR packages | start command | description (no commas)
@@ -1027,6 +1043,7 @@ p_extras() {
     else INSTALL_GREETER=0; fi
     opts+=(
         "Bar preset|floating · blurred · custom widgets|bar"
+        "Wallpapers|6 wallpapers in Noctalia's colours|walls"
         "Type-to-launch|type in the overview to open the launcher|launch"
         "Polkit agent|Noctalia asks for app passwords|polkit"
         "File manager and browser|apps for Mod+E and Mod+B|apps"
@@ -1034,6 +1051,7 @@ p_extras() {
     [[ $IS_LAPTOP -eq 1 && $HAS_SYSTEMD -eq 1 && $CONFIGS_ONLY -eq 0 ]] && lid_supported && opts+=("Lid lock|lock before suspend on lid close|lid")
     [[ $INSTALL_GREETER -eq 1 ]] && ticked+="greeter "
     [[ $BAR_PRESET -eq 1 ]] && ticked+="bar "
+    [[ $WALLPAPERS_ON -eq 1 ]] && ticked+="walls "
     [[ $TYPE_TO_LAUNCH -eq 1 ]] && ticked+="launch "
     [[ $POLKIT_AGENT -eq 1 ]] && ticked+="polkit "
     [[ $INSTALL_APPS -eq 1 ]] && ticked+="apps "
@@ -1043,14 +1061,27 @@ p_extras() {
     screen "Extras" "Choose your extras" "$sub"
     nav_footer "space" "toggle" "enter" "continue"
     checklist 9 "$ticked" 0 "${opts[@]}" || return 2
-    INSTALL_GREETER=0; TYPE_TO_LAUNCH=0; POLKIT_AGENT=0; INSTALL_APPS=0; LID_FIX=0; BAR_PRESET=0
+    INSTALL_GREETER=0; TYPE_TO_LAUNCH=0; POLKIT_AGENT=0; INSTALL_APPS=0; LID_FIX=0; BAR_PRESET=0; WALLPAPERS_ON=0
     local v
     for v in $ANSWER; do
         case $v in
-            greeter) INSTALL_GREETER=1 ;; launch) TYPE_TO_LAUNCH=1 ;; polkit) POLKIT_AGENT=1 ;; bar) BAR_PRESET=1 ;;
+            greeter) INSTALL_GREETER=1 ;; launch) TYPE_TO_LAUNCH=1 ;; polkit) POLKIT_AGENT=1 ;; bar) BAR_PRESET=1 ;; walls) WALLPAPERS_ON=1 ;;
             apps) INSTALL_APPS=1 ;; lid) LID_FIX=1 ;;
         esac
     done
+}
+
+p_wallpaper() {
+    [[ $WALLPAPERS_ON -eq 1 ]] || return 3
+    local opts=() row id desc
+    for row in "${WALLPAPER_TABLE[@]}"; do
+        IFS='|' read -r id desc <<< "$row"
+        opts+=("${id^}|$desc|$id")
+    done
+    screen "Extras" "Wallpaper" "All six go to ~/Pictures/Wallpapers; pick the one to start with."
+    nav_footer "enter" "select"
+    menu 9 "$WALLPAPER" "${opts[@]}" || return 2
+    WALLPAPER=$ANSWER
 }
 
 p_aur() {
@@ -1188,6 +1219,7 @@ p_review() {
     [[ $POLKIT_AGENT -eq 1 ]] && pa=$yes_chip || pa=$off
     [[ $LID_FIX -eq 1 ]] && ll=$yes_chip || ll=$off
     local bp; [[ $BAR_PRESET -eq 1 ]] && bp=$yes_chip || bp=$off
+    local wp_txt="${D}Noctalia's default${R}"; [[ $WALLPAPERS_ON -eq 1 ]] && wp_txt="${WALLPAPER^} ${D}(+5 more in ~/Pictures/Wallpapers)${R}"
     card 8 \
         "${D}User        ${R}${X}${user_txt}${R}" \
         "${D}Desktop     ${R}${X}${desk_txt}${R}" \
@@ -1195,6 +1227,7 @@ p_review() {
         "${D}${row4_label}${R}${X}${row4_txt}${R}" \
         "${D}Apps        ${R}${X}${apps_txt}${R}" \
         "${D}Keyboard    ${R}${X}${KB_LAYOUT}${R}" \
+        "${D}Wallpaper   ${R}${X}${wp_txt}${R}" \
         "${D}Login       ${R}${X}${greeter_txt}${R}" \
         "${D}Extras      ${R}${D}bar${R} ${bp}  ${D}type-to-launch${R} ${tl}  ${D}polkit${R} ${pa}  ${D}lid${R} ${ll}"
     nav_footer "enter" "select"
@@ -1210,7 +1243,7 @@ p_review() {
 }
 
 # Wizard: Backspace walks back through the pages, skipping hidden ones.
-PAGES=(p_welcome p_user p_newname p_newpass p_desktop p_extras p_aur p_term p_fm p_browser p_keyboard p_dm p_review)
+PAGES=(p_welcome p_user p_newname p_newpass p_desktop p_extras p_wallpaper p_aur p_term p_fm p_browser p_keyboard p_dm p_review)
 tui_decisions() {
     if [[ $IS_ROOT -eq 1 && -n $TARGET_USER ]]; then
         if id "$TARGET_USER" &>/dev/null; then USER_PRESET=1; else CREATE_USER=1; fi
@@ -1513,9 +1546,15 @@ install_browser() {
 }
 
 install_aur_helper() {
+    # Both are built from source from the AUR:
+    #   sudo pacman -S --needed git base-devel
+    #   git clone https://aur.archlinux.org/yay.git   (or paru.git)
+    #   cd yay && makepkg -si
+    # makepkg -s pulls in the build tools: go for yay, rust (cargo) for paru.
     local d; d="$(mktemp -d)"
     [[ $IS_ROOT -eq 1 ]] && chown "$TARGET_USER:$TARGET_GROUP" "$d"
-    as_user git clone --depth 1 "https://aur.archlinux.org/${AUR_HELPER}-bin.git" "$d/$AUR_HELPER"
+    pm_install git base-devel
+    as_user git clone "https://aur.archlinux.org/${AUR_HELPER}.git" "$d/$AUR_HELPER"
     ( cd "$d/$AUR_HELPER" && as_user makepkg -si --noconfirm )
     rm -rf "$d"
     command -v "$AUR_HELPER" >/dev/null || die "$AUR_HELPER didn't install — see $LOG"
@@ -1673,6 +1712,22 @@ run_steps() {
         rm -f "$NOCTALIA_DIR/10-niri.toml"
     fi
     place_user_file "$toml" "$NOCTALIA_DIR/10-installer.toml"
+
+    if [[ $WALLPAPERS_ON -eq 1 ]]; then
+        local wdir="$TARGET_HOME/Pictures/Wallpapers" row id
+        for row in "${WALLPAPER_TABLE[@]}"; do
+            id=${row%%|*}
+            get_cfg "wallpapers/noctalia-$id.jpg" "$TMP_DIR/noctalia-$id.jpg"
+            put_user_file "$TMP_DIR/noctalia-$id.jpg" "$wdir/noctalia-$id.jpg"
+        done
+        ok "Copied ${#WALLPAPER_TABLE[@]} wallpapers to $wdir"
+        printf '# Written by noctalia-niri-config-setup/install.sh\n[wallpaper]\ndirectory = "%s"\n\n[wallpaper.default]\npath = "%s"\n' \
+            "$wdir" "$wdir/noctalia-$WALLPAPER.jpg" > "$TMP_DIR/30-wallpaper.toml"
+        place_user_file "$TMP_DIR/30-wallpaper.toml" "$NOCTALIA_DIR/30-wallpaper.toml"
+        if [[ -f $TARGET_HOME/.local/state/noctalia/settings.toml ]] && grep -q '^\[wallpaper' "$TARGET_HOME/.local/state/noctalia/settings.toml"; then
+            warn "A wallpaper you picked in Noctalia earlier overrides this one (~/.local/state/noctalia/settings.toml); pick a new one in Noctalia's wallpaper panel."
+        fi
+    fi
 
     if [[ $BAR_PRESET -eq 1 ]]; then
         get_cfg noctalia/20-bar.toml "$TMP_DIR/20-bar.toml"

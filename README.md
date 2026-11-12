@@ -60,7 +60,7 @@ On other distributions, compositors your distribution doesn't package are greyed
 1. **Welcome:** shows whether it found a laptop and an existing login manager.
 2. **User:** only when run as root. Pick an existing user or create a new one. A new user is added to `wheel`, and `sudo` is installed and enabled for that group.
 3. **Desktop:** choose one or more compositors. Press Enter to take the highlighted one, or tick several with Space first. Each one gets its own config, and with Noctalia Greeter you pick between them at login.
-4. **Extras:** Noctalia Greeter, the [bar preset](#noctalia-bar-preset), overview type-to-launch, Noctalia's polkit agent, file manager and browser, and the lid-close lock (laptops only, and only with niri, Sway or Scroll). Then the **AUR helper**:
+4. **Extras:** Noctalia Greeter, the [bar preset](#noctalia-bar-preset), [wallpapers](#wallpapers) (then pick the default one), overview type-to-launch, Noctalia's polkit agent, file manager and browser, and the lid-close lock (laptops only, and only with niri, Sway or Scroll). Then the **AUR helper**:
    - keep yay or paru if one is already installed, install **paru** or **yay**, or skip it;
    - Scroll and Umbriel are only in the AUR, so they need a helper.
 5. **Apps:**
@@ -152,6 +152,17 @@ Instead of Noctalia's stock bar, the installer writes [`configs/noctalia/20-bar.
 
 The installer checks the result with `noctalia config validate`. Change anything you like in the file. Settings you change in Noctalia's Settings window are saved to `~/.local/state/noctalia/settings.toml`, which loads after this file and wins for the same setting.
 
+## Wallpapers
+
+Six original 4K wallpapers in Noctalia's palette replace Noctalia's default wallpaper:
+
+![The six bundled wallpapers](docs/screenshots/wallpapers.jpg)
+
+- **Install:** the installer copies all of them to `~/Pictures/Wallpapers/` (the folder Noctalia's wallpaper picker browses) and writes `~/.config/noctalia/30-wallpaper.toml`, setting `[wallpaper] directory` and `[wallpaper.default] path` to the one you pick.
+- **Choosing:** pick the starting wallpaper in the installer or with `--wallpaper=moonrise|aurora|dunes|waves|nebula|orbit`. `--wallpaper=none` (or unticking it under Extras) keeps Noctalia's own.
+- **Changing later:** use Noctalia's wallpaper panel. A wallpaper picked there is saved to `~/.local/state/noctalia/settings.toml` and takes precedence over the config file.
+- **Licence:** the wallpapers are generated for this project by [`tools/gen-wallpapers.py`](tools/gen-wallpapers.py), so you can regenerate or tweak them.
+
 ## File managers
 
 Mod+E opens the file manager you pick. Terminal file managers open inside the terminal you chose (e.g. `kitty yazi`, `alacritty -e ranger`).
@@ -200,7 +211,13 @@ The browser screen shows which source will be used, and Mod+B launches whatever 
 ## What gets installed
 
 - `noctalia` (v5), portals, PipeWire, `playerctl`, `brightnessctl`, fonts, and the packages for each compositor you pick, under your distribution's package names. On Arch this runs a full `pacman -Syu`.
-- On Arch with an AUR helper: `base-devel` and `git`, then `paru-bin` or `yay-bin`, built from the AUR as your user. AUR packages (Scroll, Umbriel) are built the same way.
+- On Arch with an AUR helper, yay or paru is built from source from the AUR as your user, the standard way:
+  ```bash
+  sudo pacman -S --needed git base-devel
+  git clone https://aur.archlinux.org/yay.git    # or paru.git
+  cd yay && makepkg -si
+  ```
+  `makepkg -s` pulls in the build tools (Go for yay, Rust for paru). AUR packages (Scroll, Umbriel, AUR browsers) are then installed through the helper, also as your user.
   - Run as root, the installer gives that user passwordless `sudo` only while it builds, and removes the rule straight after (and on exit).
 - A config for each compositor you picked (see the table above). Any existing file is backed up first.
 - `~/.config/noctalia/10-installer.toml`, which turns on overview type-to-launch for niri and Umbriel and the polkit agent.
@@ -229,6 +246,7 @@ The browser screen shows which source will be used, and Mod+B launches whatever 
 | `--no-greeter` | Skip Noctalia Greeter and greetd |
 | `--lid-fix` | Lock the screen before suspend when the lid closes (niri, Sway, Scroll) |
 | `--stock-bar` | Keep Noctalia's default bar instead of the bar preset |
+| `--wallpaper=…` | `moonrise` `aurora` `dunes` `waves` `nebula` `orbit`, or `none` for Noctalia's own |
 
 Example of a fully unattended install as root:
 
