@@ -111,14 +111,15 @@ window-rule {
     // Rounded corners to match Noctalia's look.
     geometry-corner-radius 20
     clip-to-geometry true
+    // niri fills the area behind the focused window's focus ring/border by
+    // default, which hides the blur on exactly that window. Don't.
+    draw-border-with-background false
 }
 
-// Floating Noctalia settings window.
+// Noctalia settings opens fullscreen (Mod+Shift+F toggles it back).
 window-rule {
     match app-id="dev.noctalia.Noctalia"
-    open-floating true
-    default-column-width { fixed 1080; }
-    default-window-height { fixed 920; }
+    open-fullscreen true
 }
 
 window-rule {
