@@ -1,0 +1,42 @@
+# =====================================================================
+#  Noctalia v5 bar preset — ~/.config/noctalia/20-bar.toml
+#  Written by noctalia-niri-config-setup/install.sh
+#
+#  Floating, see-through bar with compositor blur and a custom widget
+#  layout. Keys: https://docs.noctalia.dev/noctalia/bar/
+#
+#  Note: changes made in Noctalia's Settings window are saved to
+#  ~/.local/state/noctalia/settings.toml, which loads after this file
+#  and wins for the same setting.
+# =====================================================================
+
+[bar.default]
+position = "top"
+
+# Floating: a gap from the screen edge and from both ends.
+margin_edge = 8
+margin_ends = 12
+radius = 16
+
+# See-through background so the compositor's blur shows behind it.
+background_opacity = 0.7
+compositor_blur = true
+
+# Rounded capsule behind each widget.
+capsule = true
+
+# ---------------------------------------------------------------------
+# Widgets  (ids: https://docs.noctalia.dev/noctalia/bar/widgets/)
+# ---------------------------------------------------------------------
+start  = ["launcher", "workspaces", "active_window"]
+center = ["clock"]
+end    = ["media", "tray", "privacy", "notifications", "network", "bluetooth",
+          "volume", "brightness", "battery", "control-center", "session"]
+
+[widget.clock]
+format = "{:%a %d %b  %H:%M}"
+tooltip_format = "{:%A, %d %B %Y}"
+
+[widget.battery]
+show_label = true
+label_content = "percent"

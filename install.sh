@@ -28,6 +28,7 @@
 #    --no-apps                        # skip file manager and browser
 #    --no-greeter                     # skip Noctalia Greeter + greetd
 #    --lid-fix                        # lock before suspend on lid close
+#    --stock-bar                      # keep Noctalia's default bar (no bar preset)
 #
 #  Straight from GitHub:
 #    curl -fsSL https://raw.githubusercontent.com/Abijspy/noctalia-niri-config-setup/main/install.sh | bash
@@ -46,6 +47,7 @@ INSTALL_GREETER=1
 LID_FIX=0
 TYPE_TO_LAUNCH=1
 POLKIT_AGENT=1
+BAR_PRESET=1
 SWITCH_DM=1
 TARGET_USER=""
 NEW_USER_PASS=""
@@ -58,7 +60,7 @@ COMPOSITORS="niri"
 COMPS_FROM_FLAG=0
 AUR_HELPER="auto"
 
-usage() { sed -n '3,34p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '3,35p' "${BASH_SOURCE[0]:-$0}" 2>/dev/null | sed 's/^# \{0,1\}//'; }
 
 for arg in "$@"; do
     case "$arg" in
@@ -67,6 +69,7 @@ for arg in "$@"; do
         --no-apps)         INSTALL_APPS=0 ;;
         --no-greeter)      INSTALL_GREETER=0 ;;
         --lid-fix)         LID_FIX=1 ;;
+        --stock-bar)       BAR_PRESET=0 ;;
         --user=*)          TARGET_USER="${arg#*=}" ;;
         --terminal=*)      TERM_APP="${arg#*=}" ;;
         --file-manager=*)  FM_APP="${arg#*=}" ;;
@@ -1023,12 +1026,14 @@ p_extras() {
     if [[ $GREETER_DISTRO -eq 1 && $CONFIGS_ONLY -eq 0 ]]; then opts+=("Noctalia Greeter|login screen with greetd|greeter")
     else INSTALL_GREETER=0; fi
     opts+=(
+        "Bar preset|floating · blurred · custom widgets|bar"
         "Type-to-launch|type in the overview to open the launcher|launch"
         "Polkit agent|Noctalia asks for app passwords|polkit"
         "File manager and browser|apps for Mod+E and Mod+B|apps"
     )
     [[ $IS_LAPTOP -eq 1 && $HAS_SYSTEMD -eq 1 && $CONFIGS_ONLY -eq 0 ]] && lid_supported && opts+=("Lid lock|lock before suspend on lid close|lid")
     [[ $INSTALL_GREETER -eq 1 ]] && ticked+="greeter "
+    [[ $BAR_PRESET -eq 1 ]] && ticked+="bar "
     [[ $TYPE_TO_LAUNCH -eq 1 ]] && ticked+="launch "
     [[ $POLKIT_AGENT -eq 1 ]] && ticked+="polkit "
     [[ $INSTALL_APPS -eq 1 ]] && ticked+="apps "
@@ -1038,11 +1043,11 @@ p_extras() {
     screen "Extras" "Choose your extras" "$sub"
     nav_footer "space" "toggle" "enter" "continue"
     checklist 9 "$ticked" 0 "${opts[@]}" || return 2
-    INSTALL_GREETER=0; TYPE_TO_LAUNCH=0; POLKIT_AGENT=0; INSTALL_APPS=0; LID_FIX=0
+    INSTALL_GREETER=0; TYPE_TO_LAUNCH=0; POLKIT_AGENT=0; INSTALL_APPS=0; LID_FIX=0; BAR_PRESET=0
     local v
     for v in $ANSWER; do
         case $v in
-            greeter) INSTALL_GREETER=1 ;; launch) TYPE_TO_LAUNCH=1 ;; polkit) POLKIT_AGENT=1 ;;
+            greeter) INSTALL_GREETER=1 ;; launch) TYPE_TO_LAUNCH=1 ;; polkit) POLKIT_AGENT=1 ;; bar) BAR_PRESET=1 ;;
             apps) INSTALL_APPS=1 ;; lid) LID_FIX=1 ;;
         esac
     done
@@ -1182,6 +1187,7 @@ p_review() {
     [[ $TYPE_TO_LAUNCH -eq 1 ]] && tl=$yes_chip || tl=$off
     [[ $POLKIT_AGENT -eq 1 ]] && pa=$yes_chip || pa=$off
     [[ $LID_FIX -eq 1 ]] && ll=$yes_chip || ll=$off
+    local bp; [[ $BAR_PRESET -eq 1 ]] && bp=$yes_chip || bp=$off
     card 8 \
         "${D}User        ${R}${X}${user_txt}${R}" \
         "${D}Desktop     ${R}${X}${desk_txt}${R}" \
@@ -1190,7 +1196,7 @@ p_review() {
         "${D}Apps        ${R}${X}${apps_txt}${R}" \
         "${D}Keyboard    ${R}${X}${KB_LAYOUT}${R}" \
         "${D}Login       ${R}${X}${greeter_txt}${R}" \
-        "${D}Extras      ${R}${D}type-to-launch${R} ${tl}   ${D}polkit${R} ${pa}   ${D}lid lock${R} ${ll}"
+        "${D}Extras      ${R}${D}bar${R} ${bp}  ${D}type-to-launch${R} ${tl}  ${D}polkit${R} ${pa}  ${D}lid${R} ${ll}"
     nav_footer "enter" "select"
     menu 19 install \
         "Install now|start the installation|install" \
@@ -1668,11 +1674,23 @@ run_steps() {
     fi
     place_user_file "$toml" "$NOCTALIA_DIR/10-installer.toml"
 
+    if [[ $BAR_PRESET -eq 1 ]]; then
+        get_cfg noctalia/20-bar.toml "$TMP_DIR/20-bar.toml"
+        place_user_file "$TMP_DIR/20-bar.toml" "$NOCTALIA_DIR/20-bar.toml"
+        if [[ -f $TARGET_HOME/.local/state/noctalia/settings.toml ]] && grep -q '^\[bar' "$TARGET_HOME/.local/state/noctalia/settings.toml"; then
+            warn "Bar settings you changed in Noctalia's Settings window override the bar preset (~/.local/state/noctalia/settings.toml)."
+        fi
+    fi
+
     # --- validation (only compositors that can check a config offline) ---
     progress 78 check "Validating configs…"
     if has_comp niri && command -v niri >/dev/null; then
         if niri validate -c "$CONFIG_HOME/niri/config.kdl"; then ok "niri config is valid"
         else warn "niri validate failed. If it mentions blur or background-effect, update niri. Details in $LOG"; fi
+    fi
+    if command -v noctalia >/dev/null; then
+        if as_user env XDG_CONFIG_HOME="$CONFIG_HOME" noctalia config validate; then ok "Noctalia config is valid"
+        else warn "noctalia config validate reported problems in $NOCTALIA_DIR. Details in $LOG"; fi
     fi
     for c in sway scroll; do
         has_comp "$c" && command -v "$c" >/dev/null || continue

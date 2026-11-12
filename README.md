@@ -60,7 +60,7 @@ On other distributions, compositors your distribution doesn't package are greyed
 1. **Welcome:** shows whether it found a laptop and an existing login manager.
 2. **User:** only when run as root. Pick an existing user or create a new one. A new user is added to `wheel`, and `sudo` is installed and enabled for that group.
 3. **Desktop:** choose one or more compositors. Press Enter to take the highlighted one, or tick several with Space first. Each one gets its own config, and with Noctalia Greeter you pick between them at login.
-4. **Extras:** Noctalia Greeter, overview type-to-launch, Noctalia's polkit agent, file manager and browser, and the lid-close lock (laptops only, and only with niri, Sway or Scroll). Then the **AUR helper**:
+4. **Extras:** Noctalia Greeter, the [bar preset](#noctalia-bar-preset), overview type-to-launch, Noctalia's polkit agent, file manager and browser, and the lid-close lock (laptops only, and only with niri, Sway or Scroll). Then the **AUR helper**:
    - keep yay or paru if one is already installed, install **paru** or **yay**, or skip it;
    - Scroll and Umbriel are only in the AUR, so they need a helper.
 5. **Apps:**
@@ -136,6 +136,21 @@ What to know about each one:
 - **Labwc:** keeps Labwc's default keybinds and adds the Noctalia, app and close keys. Noctalia's line is appended to an existing `autostart` instead of replacing it.
 - **Umbriel:** contains only the settings and keys documented on Noctalia's Umbriel page plus the app keys; window management uses Umbriel's own defaults. The keyboard layout isn't set, because that setting isn't documented.
 - **KDE Plasma:** Noctalia is started through Plasma's autostart. Plasma has no blur for Noctalia, and no screenshots, clipboard history or night light from Noctalia. Set shortcuts (`noctalia msg …`) in System Settings.
+
+## Noctalia bar preset
+
+Instead of Noctalia's stock bar, the installer writes [`configs/noctalia/20-bar.toml`](configs/noctalia/20-bar.toml) to `~/.config/noctalia/` (untick it under Extras, or use `--stock-bar`, to keep the stock bar):
+
+- **Floating:** `margin_edge = 8` and `margin_ends = 12` lift it off the screen edge, with `radius = 16` corners.
+- **Blurred:** `background_opacity = 0.7` makes it see-through, and `compositor_blur = true` blurs what's behind it on compositors that support it (niri, Hyprland, Mango, Umbriel).
+- **Capsules:** `capsule = true` puts a rounded capsule behind each widget.
+- **Widgets:**
+
+  | Start | Center | End |
+  |---|---|---|
+  | launcher, workspaces, active window | clock (`Thu 12 Nov  16:41`, full date on hover) | media, tray, privacy, notifications, network, bluetooth, volume, brightness, battery (with %), control center, session |
+
+The installer checks the result with `noctalia config validate`. Change anything you like in the file. Settings you change in Noctalia's Settings window are saved to `~/.local/state/noctalia/settings.toml`, which loads after this file and wins for the same setting.
 
 ## File managers
 
@@ -213,6 +228,7 @@ The browser screen shows which source will be used, and Mod+B launches whatever 
 | `--no-apps` | Skip the file manager and browser (a terminal is always installed) |
 | `--no-greeter` | Skip Noctalia Greeter and greetd |
 | `--lid-fix` | Lock the screen before suspend when the lid closes (niri, Sway, Scroll) |
+| `--stock-bar` | Keep Noctalia's default bar instead of the bar preset |
 
 Example of a fully unattended install as root:
 
