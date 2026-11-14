@@ -1446,6 +1446,58 @@ place_user_file() {  # place_user_file SRC DEST — back up, then install for th
     ok "Wrote $2"
 }
 
+# SwayFX installs itself as "sway"; its version string names it.
+is_swayfx() { command -v sway >/dev/null 2>&1 && sway --version 2>/dev/null | grep -qi swayfx; }
+
+# Mango 0.18 renamed its options to snake_case (window_rule, is_floating,
+# gap_inner_horizontal, ...). Our config uses the new names; older Mango
+# gets them translated back.
+mango_is_legacy() {
+    local v
+    v="$(mango -v 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n1)" || true
+    [[ -n $v ]] || return 1
+    [[ ${v%%.*} -eq 0 && ${v#*.} -lt 18 ]]
+}
+mango_legacy_names() {  # mango_legacy_names FILE
+    local pair
+    for pair in window_rule:windowrule layer_rule:layerrule tag_rule:tagrule \
+                is_floating:isfloating app_id:appid no_blur:noblur no_animation:noanim \
+                gap_inner_horizontal:gappih gap_inner_vertical:gappiv \
+                gap_outer_horizontal:gappoh gap_outer_vertical:gappov \
+                border_px:borderpx focus_color:focuscolor border_color:bordercolor \
+                maximized_screen_color:maxmizescreencolor root_color:rootcolor \
+                numlock_on:numlockon sloppy_focus:sloppyfocus warp_cursor:warpcursor \
+                mouse_accel_profile:accel_profile move_client:exchange_client \
+                togglemaximizescreen:togglemaxmizescreen; do
+        sed -i "s/\b${pair%%:*}\b/${pair#*:}/g" "$1"
+    done
+    ok "Older Mango found: config written with its option names"
+}
+
+# KDE Plasma: turn on KWin's blur effect (Noctalia asks for blur behind its
+# bar and panels) and open Noctalia's settings window maximized, like niri.
+kde_extras() {
+    local kw kr rules
+    kw="$(command -v kwriteconfig6 || command -v kwriteconfig5)" || return 0
+    kr="$(command -v kreadconfig6 || command -v kreadconfig5)" || return 0
+    as_user "$kw" --file kwinrc --group Plugins --key blurEnabled true
+    rules="$(as_user "$kr" --file kwinrulesrc --group General --key rules 2>/dev/null)" || rules=""
+    if [[ ,$rules, != *,noctalia-settings,* ]]; then
+        local g=(--file kwinrulesrc --group noctalia-settings)
+        as_user "$kw" "${g[@]}" --key Description "Noctalia settings: open maximized"
+        as_user "$kw" "${g[@]}" --key wmclass "dev.noctalia.Noctalia"
+        as_user "$kw" "${g[@]}" --key wmclassmatch 1
+        as_user "$kw" "${g[@]}" --key maximizehoriz true
+        as_user "$kw" "${g[@]}" --key maximizehorizrule 3
+        as_user "$kw" "${g[@]}" --key maximizevert true
+        as_user "$kw" "${g[@]}" --key maximizevertrule 3
+        rules="${rules:+$rules,}noctalia-settings"
+        as_user "$kw" --file kwinrulesrc --group General --key rules "$rules"
+        as_user "$kw" --file kwinrulesrc --group General --key count "$(tr ',' '\n' <<<"$rules" | grep -c .)"
+    fi
+    ok "KDE Plasma: blur on, Noctalia settings open maximized"
+}
+
 write_comp_config() {  # write_comp_config ID
     local id=$1 w="$TMP_DIR/cfg-$1"
     mkdir -p "$w"
@@ -1467,10 +1519,15 @@ write_comp_config() {  # write_comp_config ID
             fi
             place_user_file "$w/hyprland.lua" "$CONFIG_HOME/hypr/hyprland.lua" ;;
         sway|scroll)
-            get_cfg sway/config "$w/config"
+            get_cfg "$id/config" "$w/config"
             sed -i "s/xkb_layout \"us\"/xkb_layout \"$KB_LAYOUT\"/" "$w/config"
             apply_apps "$w/config" hash
-            [[ $id == scroll ]] && sed -i 's|/etc/sway/config.d/\*|/etc/scroll/config.d/*|' "$w/config"
+            # SwayFX understands blur, corners and shadows; plain Sway doesn't.
+            if [[ $id == sway ]] && is_swayfx; then
+                get_cfg sway/swayfx-effects "$w/fx"
+                cat "$w/fx" >> "$w/config"
+                ok "SwayFX found: blur, rounded corners and shadows turned on"
+            fi
             if [[ $LID_FIX -eq 1 ]]; then
                 printf '\n# Lock and suspend on lid close (Noctalia)\nbindswitch --locked lid:on exec noctalia msg session lock-and-suspend\n' >> "$w/config"
             fi
@@ -1479,6 +1536,7 @@ write_comp_config() {  # write_comp_config ID
             get_cfg mango/config.conf "$w/config.conf"
             sed -i "s/^xkb_rules_layout=us$/xkb_rules_layout=$KB_LAYOUT/" "$w/config.conf"
             apply_apps "$w/config.conf" hash
+            mango_is_legacy && mango_legacy_names "$w/config.conf"
             place_user_file "$w/config.conf" "$CONFIG_HOME/mango/config.conf" ;;
         labwc)
             get_cfg labwc/rc.xml "$w/rc.xml"
@@ -1498,12 +1556,14 @@ write_comp_config() {  # write_comp_config ID
             place_user_file "$w/environment" "$f" ;;
         umbriel)
             get_cfg umbriel/config.toml "$w/config.toml"
+            sed -i "s/^layout = \"us\"$/layout = \"$KB_LAYOUT\"/" "$w/config.toml"
             apply_apps "$w/config.toml" hash
             place_user_file "$w/config.toml" "$CONFIG_HOME/umbriel/config.toml" ;;
         kde)
             get_cfg kde/noctalia.desktop "$w/noctalia.desktop"
             place_user_file "$w/noctalia.desktop" "$CONFIG_HOME/autostart/noctalia.desktop"
-            warn "KDE Plasma: Noctalia autostarts, but blur, screenshots and clipboard history are limited there. Add shortcuts (noctalia msg ...) in System Settings." ;;
+            kde_extras
+            warn "KDE Plasma: Noctalia autostarts, but screenshots and clipboard history are limited there. Add shortcuts (noctalia msg ...) in System Settings." ;;
     esac
 }
 

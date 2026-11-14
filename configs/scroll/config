@@ -1,0 +1,196 @@
+# =====================================================================
+#  Scroll + Noctalia v5 — ~/.config/scroll/config
+#  Noctalia snippets follow
+#  https://docs.noctalia.dev/noctalia/compositor-settings/sway-scroll/
+#
+#  Mirrors this repo's niri config: scrolling columns (half width by
+#  default, 1/3 - 1/2 - 2/3 presets), 12px gaps, 20px corners, soft
+#  shadow, Rosé Pine border, the Noctalia settings window opening as a
+#  full-width column (full size, not fullscreen), and niri's key scheme.
+#  Scroll has no blur.
+# =====================================================================
+
+set $mod Mod4
+set $ipc noctalia msg
+
+# ---------------------------------------------------------------------
+# Input
+# ---------------------------------------------------------------------
+input type:keyboard {
+    xkb_layout "us"
+    xkb_numlock enabled
+    repeat_delay 300
+    repeat_rate 40
+}
+
+input type:touchpad {
+    tap enabled
+    natural_scroll enabled
+    dwt enabled
+    accel_profile adaptive
+}
+
+input type:pointer {
+    accel_profile flat
+}
+
+focus_follows_mouse yes
+mouse_warping container
+
+# ---------------------------------------------------------------------
+# Look
+# ---------------------------------------------------------------------
+default_border pixel 2
+default_floating_border pixel 2
+gaps inner 12
+gaps outer 0
+#       class                   border  backgr. text    indic.  child_border
+client.focused          #c4a7e7 #c4a7e7 #191724 #c4a7e7 #c4a7e7
+client.focused_inactive #26233a #26233a #e0def4 #26233a #26233a
+client.unfocused        #26233a #26233a #908caa #26233a #26233a
+
+# Rounded corners and a soft shadow, like niri
+default_decoration border_radius 20 shadow true shadow_size 5 shadow_blur 30 shadow_offset 0 5 shadow_color #00000077
+
+# Scrolling layout: niri's column widths
+layout_default_width 0.5
+layout_default_height 1.0
+layout_widths [0.33333333 0.5 0.66666667 1.0]
+layout_heights [0.33333333 0.5 0.66666667 1.0]
+
+# ---------------------------------------------------------------------
+# Window rules
+# ---------------------------------------------------------------------
+# Noctalia settings: open as a full-width column (full size, not
+# fullscreen), like niri's open-maximized, so the bar stays visible.
+for_window [app_id="^dev\.noctalia\.Noctalia$"] set_size h 1.0
+
+# Small utility windows float, as in the niri config.
+for_window [title="^Picture-in-Picture$"] floating enable
+for_window [app_id="^org\.gnome\.Calculator$"] floating enable
+for_window [app_id="^(org\.pulseaudio\.)?pavucontrol$"] floating enable
+for_window [app_id="^nm-connection-editor$"] floating enable
+
+# ---------------------------------------------------------------------
+# Autostart Noctalia
+# ---------------------------------------------------------------------
+exec noctalia
+
+# ---------------------------------------------------------------------
+# Keybinds (same layout as the niri config)
+# ---------------------------------------------------------------------
+# Noctalia
+bindsym $mod+space exec $ipc panel-toggle launcher
+bindsym $mod+d exec $ipc panel-toggle launcher
+bindsym $mod+s exec $ipc panel-toggle control-center
+bindsym $mod+Shift+comma exec $ipc settings-toggle
+bindsym Mod1+Tab exec $ipc window-switcher hold
+bindsym Mod1+Shift+Tab exec $ipc window-switcher hold reverse
+
+# Media keys (Noctalia shows its OSD)
+bindsym --locked XF86AudioRaiseVolume exec $ipc volume-up
+bindsym --locked XF86AudioLowerVolume exec $ipc volume-down
+bindsym --locked XF86AudioMute exec $ipc volume-mute
+bindsym --locked XF86AudioMicMute exec $ipc mic-mute
+bindsym --locked XF86MonBrightnessUp exec $ipc brightness-up
+bindsym --locked XF86MonBrightnessDown exec $ipc brightness-down
+bindsym --locked XF86AudioPlay exec playerctl play-pause
+bindsym --locked XF86AudioNext exec playerctl next
+bindsym --locked XF86AudioPrev exec playerctl previous
+
+# Apps
+bindsym $mod+Return exec alacritty
+bindsym $mod+e exec nautilus
+bindsym $mod+b exec firefox
+
+# Windows
+bindsym $mod+q kill
+bindsym $mod+f toggle_size this 1.0 1.0
+bindsym $mod+Shift+f fullscreen toggle
+bindsym $mod+Ctrl+f fullscreen layout
+bindsym $mod+v floating toggle
+bindsym $mod+Shift+v focus mode_toggle
+bindsym $mod+c align center
+bindsym $mod+o scale_workspace overview
+bindsym $mod+r cycle_size h next
+bindsym $mod+Shift+r cycle_size v next
+bindsym $mod+Home focus beginning
+bindsym $mod+End focus end
+bindsym $mod+Ctrl+Home move beginning
+bindsym $mod+Ctrl+End move end
+bindsym $mod+minus resize shrink width 10 ppt
+bindsym $mod+equal resize grow width 10 ppt
+bindsym $mod+Shift+minus resize shrink height 10 ppt
+bindsym $mod+Shift+equal resize grow height 10 ppt
+floating_modifier $mod normal
+
+# Focus: arrows / HJKL
+bindsym $mod+Left focus left
+bindsym $mod+Down focus down
+bindsym $mod+Up focus up
+bindsym $mod+Right focus right
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+
+# Move: Mod+Ctrl + direction
+bindsym $mod+Ctrl+Left move left
+bindsym $mod+Ctrl+Down move down
+bindsym $mod+Ctrl+Up move up
+bindsym $mod+Ctrl+Right move right
+bindsym $mod+Ctrl+h move left
+bindsym $mod+Ctrl+j move down
+bindsym $mod+Ctrl+k move up
+bindsym $mod+Ctrl+l move right
+
+# Monitors
+bindsym $mod+Shift+Left focus output left
+bindsym $mod+Shift+Right focus output right
+bindsym $mod+Shift+Ctrl+Left move container to output left
+bindsym $mod+Shift+Ctrl+Right move container to output right
+
+# Workspaces: next/previous with Page_Down/Page_Up or U/I, wheel too
+bindsym $mod+Page_Down workspace next_on_output
+bindsym $mod+Page_Up workspace prev_on_output
+bindsym $mod+u workspace next_on_output
+bindsym $mod+i workspace prev_on_output
+bindsym $mod+Ctrl+Page_Down move container to workspace next_on_output
+bindsym $mod+Ctrl+Page_Up move container to workspace prev_on_output
+bindsym $mod+Ctrl+u move container to workspace next_on_output
+bindsym $mod+Ctrl+i move container to workspace prev_on_output
+bindsym --whole-window $mod+button5 workspace next_on_output
+bindsym --whole-window $mod+button4 workspace prev_on_output
+
+bindsym $mod+1 workspace number 1
+bindsym $mod+2 workspace number 2
+bindsym $mod+3 workspace number 3
+bindsym $mod+4 workspace number 4
+bindsym $mod+5 workspace number 5
+bindsym $mod+6 workspace number 6
+bindsym $mod+7 workspace number 7
+bindsym $mod+8 workspace number 8
+bindsym $mod+9 workspace number 9
+bindsym $mod+Ctrl+1 move container to workspace number 1
+bindsym $mod+Ctrl+2 move container to workspace number 2
+bindsym $mod+Ctrl+3 move container to workspace number 3
+bindsym $mod+Ctrl+4 move container to workspace number 4
+bindsym $mod+Ctrl+5 move container to workspace number 5
+bindsym $mod+Ctrl+6 move container to workspace number 6
+bindsym $mod+Ctrl+7 move container to workspace number 7
+bindsym $mod+Ctrl+8 move container to workspace number 8
+bindsym $mod+Ctrl+9 move container to workspace number 9
+
+# Screenshots (Noctalia)
+bindsym Print exec $ipc screenshot-region
+bindsym Ctrl+Print exec $ipc screenshot-fullscreen
+bindsym Mod1+Print exec $ipc screenshot-annotate
+
+# Session
+bindsym $mod+Shift+p exec $ipc dpms-off
+bindsym $mod+Shift+c reload
+bindsym $mod+Shift+e exit
+bindsym Ctrl+Mod1+Delete exit
+
+# Distribution snippets (systemd user session, portals)
+include /etc/scroll/config.d/*

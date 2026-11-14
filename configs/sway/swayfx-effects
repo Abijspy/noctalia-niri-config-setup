@@ -1,0 +1,25 @@
+
+# ---------------------------------------------------------------------
+# SwayFX effects (added by the installer because SwayFX is installed):
+# blur, rounded corners and shadows, matching the niri config.
+# ---------------------------------------------------------------------
+blur enable
+blur_xray disable
+blur_passes 3
+blur_radius 3
+blur_noise 0.02
+blur_saturation 1.5
+corner_radius 20
+shadows enable
+shadow_blur_radius 30
+shadow_offset 0 5
+shadow_color #00000077
+
+# Blur Noctalia's bar, panels, notifications, OSD, dock and window switcher
+layer_effects "noctalia-bar-default" "blur enable; blur_ignore_transparent enable"
+layer_effects "noctalia-panel" "blur enable; blur_ignore_transparent enable"
+layer_effects "noctalia-attached-panel" "blur enable; blur_ignore_transparent enable"
+layer_effects "noctalia-notification" "blur enable; blur_ignore_transparent enable"
+layer_effects "noctalia-osd" "blur enable; blur_ignore_transparent enable"
+layer_effects "noctalia-dock" "blur enable; blur_ignore_transparent enable"
+layer_effects "noctalia-window-switcher" "blur enable; blur_ignore_transparent enable"

@@ -3,26 +3,72 @@
 #  Noctalia snippets follow
 #  https://docs.noctalia.dev/noctalia/compositor-settings/umbriel/
 #  Umbriel's own docs: https://docs.noctalia.dev/umbriel/
+#
+#  Mirrors this repo's niri config: scrolling layout, 12px gaps, 20px
+#  corners, Rosé Pine border, soft shadow, blur on every window and on
+#  all of Noctalia's surfaces, the Noctalia settings window opening
+#  maximized (full size, not fullscreen), and niri's key scheme.
 # =====================================================================
 
 [general]
 # Runs once after startup (not on config reload).
 autostart = ["noctalia"]
 
+[environment]
+QT_QPA_PLATFORM = "wayland"
+ELECTRON_OZONE_PLATFORM_HINT = "auto"
+
+[input.keyboard]
+layout = "us"
+numlock_toggle = true
+repeat_rate = 40
+repeat_delay = 300
+
+[input.touchpad]
+tap = true
+natural_scroll = true
+
+[input.mouse]
+accel_profile = "flat"
+
+[input.focus]
+follows_mouse = "sloppy"
+
+[layout]
+mode = "scrolling"
+gap = 12
+extent_presets = [0.333, 0.5, 0.667]
+
+[layout.scrolling]
+default_extent_fraction = 0.5
+
 [appearance]
 prefer_no_csd = true
 border_width = 2
-corner_radius = 10
+corner_radius = 20
 
 [appearance.blur]
 enabled = true
 optimized = true
-passes = 2
+passes = 3
 radius = 3
 noise = 0.02
 brightness = 0.9
 contrast = 0.9
-saturation = 1.1
+saturation = 1.5
+
+[appearance.shadow]
+enabled = true
+softness = 30
+offset_x = 0
+offset_y = 5
+
+[colors]
+shadow = "#00000077"
+
+[colors.border]
+focused = "#C4A7E7FF"
+unfocused = "#26233AFF"
 
 # Keep [animation.layers] disabled (the default): layer animations
 # conflict with Noctalia's own animations.
@@ -32,36 +78,149 @@ saturation = 1.1
 blur = true
 blur_optimized = true
 
-# Float Noctalia's settings window
+# Noctalia settings: open full size (maximized, not fullscreen) so the
+# bar stays visible and the window keeps its blur.
 [[window_rule]]
 match.app_id = "^dev.noctalia.Noctalia$"
-default_floating = true
-default_size = [1020, 900]
+default_maximize = true
 
-# Blur Noctalia's bar, panels, dock, notifications and OSD
+# Small utility windows float, as in the niri config.
+[[window_rule]]
+match.title = "^(Picture-in-Picture|Picture in picture)$"
+default_floating = true
+default_maximize = false
+
+[[window_rule]]
+match.app_id = "^(org.gnome.Calculator|org.pulseaudio.pavucontrol|pavucontrol|nm-connection-editor)$"
+default_floating = true
+
+[[window_rule]]
+match.app_id = "^dev.noctalia.UmbrielSharePicker$"
+default_floating = true
+default_floating_size_px = { width = 800, height = 600 }
+
+# Blur Noctalia's bar, panels, dock, notifications, OSD and window switcher
 [[layer_rule]]
-match.namespace = "^noctalia-(bar-[^\"]+|notification|dock|panel|attached-panel|osd)$"
+match.namespace = "^noctalia-(bar-[^\"]+|notification|dock|panel|attached-panel|osd|window-switcher)$"
 blur = true
-blur_ignore_alpha = 0.6
+blur_ignore_alpha = 0.5
 blur_optimized = false
 
+# Defining [keybinds] replaces Umbriel's built-in binds, so every bind
+# is listed here.
 [keybinds]
 # Noctalia
 "Mod+Space" = "spawn noctalia msg panel-toggle launcher"
+"Mod+D" = "spawn noctalia msg panel-toggle launcher"
 "Mod+S" = "spawn noctalia msg panel-toggle control-center"
-"Mod+Comma" = "spawn noctalia msg settings-toggle"
+"Mod+Shift+Comma" = "spawn noctalia msg settings-toggle"
 "Alt+Tab" = "spawn noctalia msg window-switcher hold"
 "Alt+Shift+Tab" = "spawn noctalia msg window-switcher hold reverse"
-"Mod+Shift+A" = "spawn noctalia msg screenshot-annotate"
-"Mod+Ctrl+A" = "spawn noctalia msg annotate"
 
-"XF86AudioRaiseVolume" = "spawn noctalia msg volume-up"
-"XF86AudioLowerVolume" = "spawn noctalia msg volume-down"
-"XF86AudioMute" = "spawn noctalia msg volume-mute"
-"XF86MonBrightnessUp" = "spawn noctalia msg brightness-up"
-"XF86MonBrightnessDown" = "spawn noctalia msg brightness-down"
+# Media keys (Noctalia shows its OSD)
+"XF86AudioRaiseVolume" = { action = "spawn noctalia msg volume-up", allow_when_locked = true }
+"XF86AudioLowerVolume" = { action = "spawn noctalia msg volume-down", allow_when_locked = true }
+"XF86AudioMute" = { action = "spawn noctalia msg volume-mute", allow_when_locked = true }
+"XF86AudioMicMute" = { action = "spawn noctalia msg mic-mute", allow_when_locked = true }
+"XF86MonBrightnessUp" = { action = "spawn noctalia msg brightness-up", allow_when_locked = true }
+"XF86MonBrightnessDown" = { action = "spawn noctalia msg brightness-down", allow_when_locked = true }
+"XF86AudioPlay" = { action = "spawn playerctl play-pause", allow_when_locked = true }
+"XF86AudioNext" = { action = "spawn playerctl next", allow_when_locked = true }
+"XF86AudioPrev" = { action = "spawn playerctl previous", allow_when_locked = true }
 
 # Apps
 "Mod+Return" = "spawn alacritty"
 "Mod+E" = "spawn nautilus"
 "Mod+B" = "spawn firefox"
+
+# Windows
+"Mod+Q" = { action = "window-close", repeat = false }
+"Mod+O" = { action = "overview-toggle", repeat = false }
+"Mod+F" = "window-toggle-maximize"
+"Mod+Shift+F" = "window-toggle-fullscreen"
+"Mod+Ctrl+F" = "window-toggle-maximize-to-edges"
+"Mod+V" = "window-toggle-floating"
+"Mod+Shift+V" = "window-focus-switch-floating"
+"Mod+W" = "column-toggle-tabbed"
+"Mod+C" = "column-center"
+"Mod+R" = "window-cycle-primary-extent"
+"Mod+Shift+R" = "window-cycle-secondary-extent"
+"Mod+Minus" = "window-modify-primary-extent -0.1"
+"Mod+Equal" = "window-modify-primary-extent +0.1"
+"Mod+Shift+Minus" = "window-modify-secondary-extent -0.1"
+"Mod+Shift+Equal" = "window-modify-secondary-extent +0.1"
+"Mod+BracketLeft" = "window-consume-or-expel-left"
+"Mod+BracketRight" = "window-consume-or-expel-right"
+"Mod+Comma" = "window-consume-left"
+"Mod+Period" = "window-consume-right"
+
+# Focus: arrows / HJKL
+"Mod+Left" = "window-focus-left"
+"Mod+Right" = "window-focus-right"
+"Mod+Up" = "window-focus-up"
+"Mod+Down" = "window-focus-down"
+"Mod+H" = "window-focus-left"
+"Mod+L" = "window-focus-right"
+"Mod+K" = "window-focus-up"
+"Mod+J" = "window-focus-down"
+"Mod+Home" = "column-focus-first"
+"Mod+End" = "column-focus-last"
+
+# Move: Mod+Ctrl + direction
+"Mod+Ctrl+Left" = "column-move-left"
+"Mod+Ctrl+Right" = "column-move-right"
+"Mod+Ctrl+Up" = "window-move-up"
+"Mod+Ctrl+Down" = "window-move-down"
+"Mod+Ctrl+H" = "column-move-left"
+"Mod+Ctrl+L" = "column-move-right"
+"Mod+Ctrl+K" = "window-move-up"
+"Mod+Ctrl+J" = "window-move-down"
+"Mod+Ctrl+Home" = "column-move-to-first"
+"Mod+Ctrl+End" = "column-move-to-last"
+
+# Monitors
+"Mod+Shift+Left" = "output-focus-left"
+"Mod+Shift+Right" = "output-focus-right"
+"Mod+Shift+Ctrl+Left" = "column-move-to-output-left"
+"Mod+Shift+Ctrl+Right" = "column-move-to-output-right"
+
+# Workspaces
+"Mod+Page_Down" = "workspace-next"
+"Mod+Page_Up" = "workspace-previous"
+"Mod+U" = "workspace-next"
+"Mod+I" = "workspace-previous"
+"Mod+Ctrl+Page_Down" = "column-move-to-workspace-next"
+"Mod+Ctrl+Page_Up" = "column-move-to-workspace-previous"
+"Mod+Ctrl+U" = "column-move-to-workspace-next"
+"Mod+Ctrl+I" = "column-move-to-workspace-previous"
+"Mod+WheelDown" = "workspace-next"
+"Mod+WheelUp" = "workspace-previous"
+"Mod+1" = "workspace-switch 1"
+"Mod+2" = "workspace-switch 2"
+"Mod+3" = "workspace-switch 3"
+"Mod+4" = "workspace-switch 4"
+"Mod+5" = "workspace-switch 5"
+"Mod+6" = "workspace-switch 6"
+"Mod+7" = "workspace-switch 7"
+"Mod+8" = "workspace-switch 8"
+"Mod+9" = "workspace-switch 9"
+"Mod+Ctrl+1" = "column-move-to-workspace 1"
+"Mod+Ctrl+2" = "column-move-to-workspace 2"
+"Mod+Ctrl+3" = "column-move-to-workspace 3"
+"Mod+Ctrl+4" = "column-move-to-workspace 4"
+"Mod+Ctrl+5" = "column-move-to-workspace 5"
+"Mod+Ctrl+6" = "column-move-to-workspace 6"
+"Mod+Ctrl+7" = "column-move-to-workspace 7"
+"Mod+Ctrl+8" = "column-move-to-workspace 8"
+"Mod+Ctrl+9" = "column-move-to-workspace 9"
+
+# Screenshots (Noctalia)
+"Print" = "spawn noctalia msg screenshot-region"
+"Ctrl+Print" = "spawn noctalia msg screenshot-fullscreen"
+"Alt+Print" = "spawn noctalia msg screenshot-annotate"
+
+# Session
+"Mod+Escape" = { action = "shortcuts-inhibit-toggle", allow_when_inhibited = true, repeat = false }
+"Mod+Shift+P" = "dpms-off"
+"Mod+Shift+E" = "session-quit"
+"Ctrl+Alt+Delete" = "session-quit"

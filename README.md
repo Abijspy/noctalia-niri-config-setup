@@ -127,15 +127,44 @@ Every config starts Noctalia, includes the Noctalia settings from its [composito
 | `Mod+1`…`9`, `Mod+Shift+1`…`9` | Go to / move to workspace |
 | Volume and brightness keys | Noctalia's volume and brightness controls |
 
-What to know about each one:
+Every config is built from the niri one, so all compositors share the same look and keys as far as each one can:
 
-- **niri:** blur everywhere, including the focused window (`draw-border-with-background false`, so the focus ring doesn't paint over the blur), and a blurred overview wallpaper. Noctalia settings opens as a maximized column (not fullscreen, so its blur stays). Needs niri 26.04 or newer for `background-effect` / `blur`.
-- **Hyprland:** uses Hyprland's Lua config (`hyprland.lua`), the format Noctalia documents. An existing `hyprland.conf` is moved aside to a dated backup.
-- **Sway / Scroll:** the same config, with Scroll reading its own `config.d` folder. Sway and Scroll can't blur Noctalia's surfaces.
-- **Mango:** window blur on, layer blur off, as Noctalia recommends. Noctalia's docs also suggest turning off Noctalia's own shadows under Mango (`shadow = false` for `[bar.default]`, `[dock]` and `[shell.panel]`); the installer doesn't, because that setting would affect every compositor.
-- **Labwc:** keeps Labwc's default keybinds and adds the Noctalia, app and close keys. Noctalia's line is appended to an existing `autostart` instead of replacing it.
-- **Umbriel:** contains only the settings and keys documented on Noctalia's Umbriel page plus the app keys; window management uses Umbriel's own defaults. The keyboard layout isn't set, because that setting isn't documented.
-- **KDE Plasma:** Noctalia is started through Plasma's autostart. Plasma has no blur for Noctalia, and no screenshots, clipboard history or night light from Noctalia. Set shortcuts (`noctalia msg …`) in System Settings.
+- **Same look:** 12px gaps, 20px rounded corners, a 2px Rosé Pine border (`#c4a7e7` focused, `#26233a` unfocused) and a soft shadow.
+- **Same blur:** windows and Noctalia's bar, panels, notifications, OSD, dock and window switcher are blurred wherever the compositor can blur.
+- **Noctalia settings opens full size:** maximized, not fullscreen, so the bar stays visible and the window keeps its blur.
+- **Same input:** keyboard repeat 300 ms / 40 per second, numlock on, tap-to-click and natural scrolling on touchpads, flat mouse acceleration, focus follows the mouse.
+- **Same keys:** see the table below.
+
+| Keys | Does |
+| --- | --- |
+| `Super+Space` / `Super+D` | Noctalia launcher |
+| `Super+S` | Control center |
+| `Super+Shift+,` | Noctalia settings |
+| `Alt+Tab` | Window switcher |
+| `Super+Return` / `Super+E` / `Super+B` | Terminal / file manager / browser |
+| `Super+Q` | Close window |
+| `Super+F` / `Super+Shift+F` | Maximize / fullscreen |
+| `Super+V` | Toggle floating |
+| `Super+←↓↑→` or `Super+H/J/K/L` | Focus |
+| `Super+Ctrl+` direction | Move window |
+| `Super+Shift+←/→` | Focus monitor (add `Ctrl` to move the window there) |
+| `Super+1…9` / `Super+Ctrl+1…9` | Go to / move to workspace |
+| `Super+U` / `Super+I` (or `Page Down/Up`) | Next / previous workspace |
+| `Super+-` / `Super+=` | Narrower / wider (add `Shift` for height) |
+| `Print` / `Ctrl+Print` / `Alt+Print` | Screenshot region / screen / annotate |
+| `Super+Shift+P` | Monitors off |
+| `Super+Shift+E` | Quit |
+
+What's different on each one:
+
+- **niri:** the reference config. Blur everywhere, including the focused window (`draw-border-with-background false`, so the focus ring doesn't paint over the blur), and a blurred overview wallpaper. Noctalia settings opens as a maximized column. Needs niri 26.04 or newer for `background-effect` / `blur`.
+- **Hyprland:** uses Hyprland's Lua config (`hyprland.lua`, Hyprland 0.55+), the format Noctalia documents. Window blur (xray off, as in niri) plus layer blur for every Noctalia surface; Noctalia settings opens maximized. `Super+W` groups windows (tabs), `Super+R` flips the split. Hyprland has no overview, so `Super+O` does nothing. An existing `hyprland.conf` is moved aside to a dated backup.
+- **Sway:** plain Sway can't blur or round corners, so you get the gaps, colours, rules and keys. Noctalia settings opens as a large centred floating window. If the installed Sway is **SwayFX**, the installer adds blur (windows and Noctalia's surfaces), 20px corners and shadows.
+- **Scroll:** its own config, using Scroll's niri-like scrolling layout (half-width columns, `Super+R` cycles 1/3, 1/2, 2/3), rounded corners and shadows. Noctalia settings opens as a full-width column, like niri. `Super+O` is Scroll's overview. Scroll has no blur.
+- **Mango:** scroller (niri-style) layout, window blur and layer blur (bar, panels, notifications), shadows and rounded corners. Noctalia settings opens as a large centred floating window, since Mango has no open-maximized rule. The config uses Mango 0.18's option names; on an older Mango the installer translates them back.
+- **Labwc:** a stacking compositor, so no tiling keys, and no blur. You get the gaps, 20px corners, drop shadows, input settings, nine workspaces and the keys above that apply; Labwc's default keybinds stay. Noctalia settings opens maximized. Noctalia's line is appended to an existing `autostart` instead of replacing it.
+- **Umbriel:** scrolling layout with the full niri key scheme (its config replaces Umbriel's built-in keys), blur on windows and every Noctalia surface, Noctalia settings opening maximized, `Super+O` overview.
+- **KDE Plasma:** Noctalia is started through Plasma's autostart. The installer turns on KWin's blur effect and adds a KWin window rule that opens Noctalia settings maximized. Noctalia has no screenshots, clipboard history or night light on Plasma, and Plasma keeps its own shortcuts; set Noctalia shortcuts (`noctalia msg …`) in System Settings.
 
 ## Noctalia bar preset
 
@@ -267,3 +296,5 @@ niri validate
 ```
 
 The configs launch `alacritty`, `nautilus` and `firefox` and use the `us` keyboard layout; change those lines to suit you.
+
+On SwayFX, also append `configs/sway/swayfx-effects` to `~/.config/sway/config` for blur, corners and shadows. Scroll has its own config in `configs/scroll/config`.

@@ -3,32 +3,76 @@
   Labwc + Noctalia v5 - ~/.config/labwc/rc.xml
   Noctalia snippets follow
   https://docs.noctalia.dev/noctalia/compositor-settings/labwc/
+
+  Mirrors this repo's niri config where a stacking compositor can:
+  12px gaps, 20px corners, drop shadows, niri's input settings, the
+  Noctalia settings window opening maximized (full size, not
+  fullscreen) and niri's key scheme. Labwc has no blur.
 -->
 <labwc_config>
   <core>
-    <gap>10</gap>
+    <gap>12</gap>
   </core>
+
+  <theme>
+    <cornerRadius>20</cornerRadius>
+    <dropShadows>yes</dropShadows>
+  </theme>
+
+  <focus>
+    <followMouse>yes</followMouse>
+    <followMouseRequiresMovement>yes</followMouseRequiresMovement>
+  </focus>
+
+  <!-- Nine workspaces, like the Mod+1..9 binds below -->
+  <desktops number="9" />
 
   <!-- Thumbnail-based window switcher -->
   <windowSwitcher preview="no" outlines="yes">
     <osd style="thumbnail"/>
   </windowSwitcher>
 
+  <libinput>
+    <device category="touchpad">
+      <tap>yes</tap>
+      <naturalScroll>yes</naturalScroll>
+      <disableWhileTyping>yes</disableWhileTyping>
+      <accelProfile>adaptive</accelProfile>
+    </device>
+    <device category="non-touch">
+      <accelProfile>flat</accelProfile>
+    </device>
+  </libinput>
+
+  <windowRules>
+    <!-- Noctalia settings: open full size (maximized, not fullscreen) -->
+    <windowRule identifier="dev.noctalia.Noctalia"><action name="Maximize"/></windowRule>
+  </windowRules>
+
   <keyboard>
-    <!-- Keep Labwc's default keybinds -->
+    <numlock>on</numlock>
+    <repeatRate>40</repeatRate>
+    <repeatDelay>300</repeatDelay>
+
+    <!-- Keep Labwc's default keybinds (Alt+Tab switcher, Super+arrows snap) -->
     <default />
 
     <!-- Noctalia -->
     <keybind key="W-space"><action name="Execute"><command>noctalia msg panel-toggle launcher</command></action></keybind>
+    <keybind key="W-d"><action name="Execute"><command>noctalia msg panel-toggle launcher</command></action></keybind>
     <keybind key="W-s"><action name="Execute"><command>noctalia msg panel-toggle control-center</command></action></keybind>
-    <keybind key="W-comma"><action name="Execute"><command>noctalia msg settings-toggle</command></action></keybind>
+    <keybind key="W-S-comma"><action name="Execute"><command>noctalia msg settings-toggle</command></action></keybind>
 
-    <!-- Media keys -->
-    <keybind key="XF86AudioRaiseVolume"><action name="Execute"><command>noctalia msg volume-up</command></action></keybind>
-    <keybind key="XF86AudioLowerVolume"><action name="Execute"><command>noctalia msg volume-down</command></action></keybind>
-    <keybind key="XF86AudioMute"><action name="Execute"><command>noctalia msg volume-mute</command></action></keybind>
-    <keybind key="XF86MonBrightnessUp"><action name="Execute"><command>noctalia msg brightness-up</command></action></keybind>
-    <keybind key="XF86MonBrightnessDown"><action name="Execute"><command>noctalia msg brightness-down</command></action></keybind>
+    <!-- Media keys (Noctalia shows its OSD) -->
+    <keybind key="XF86AudioRaiseVolume" allowWhenLocked="yes"><action name="Execute"><command>noctalia msg volume-up</command></action></keybind>
+    <keybind key="XF86AudioLowerVolume" allowWhenLocked="yes"><action name="Execute"><command>noctalia msg volume-down</command></action></keybind>
+    <keybind key="XF86AudioMute" allowWhenLocked="yes"><action name="Execute"><command>noctalia msg volume-mute</command></action></keybind>
+    <keybind key="XF86AudioMicMute" allowWhenLocked="yes"><action name="Execute"><command>noctalia msg mic-mute</command></action></keybind>
+    <keybind key="XF86MonBrightnessUp" allowWhenLocked="yes"><action name="Execute"><command>noctalia msg brightness-up</command></action></keybind>
+    <keybind key="XF86MonBrightnessDown" allowWhenLocked="yes"><action name="Execute"><command>noctalia msg brightness-down</command></action></keybind>
+    <keybind key="XF86AudioPlay" allowWhenLocked="yes"><action name="Execute"><command>playerctl play-pause</command></action></keybind>
+    <keybind key="XF86AudioNext" allowWhenLocked="yes"><action name="Execute"><command>playerctl next</command></action></keybind>
+    <keybind key="XF86AudioPrev" allowWhenLocked="yes"><action name="Execute"><command>playerctl previous</command></action></keybind>
 
     <!-- Apps -->
     <keybind key="W-Return"><action name="Execute"><command>alacritty</command></action></keybind>
@@ -37,6 +81,51 @@
 
     <!-- Windows -->
     <keybind key="W-q"><action name="Close"/></keybind>
-    <keybind key="W-f"><action name="ToggleFullscreen"/></keybind>
+    <keybind key="W-f"><action name="ToggleMaximize"/></keybind>
+    <keybind key="W-S-f"><action name="ToggleFullscreen"/></keybind>
+
+    <!-- Monitors -->
+    <keybind key="W-S-Left"><action name="FocusOutput" direction="left"/></keybind>
+    <keybind key="W-S-Right"><action name="FocusOutput" direction="right"/></keybind>
+    <keybind key="W-S-C-Left"><action name="MoveToOutput" direction="left"/></keybind>
+    <keybind key="W-S-C-Right"><action name="MoveToOutput" direction="right"/></keybind>
+
+    <!-- Workspaces: next/previous with Page_Down/Page_Up or U/I -->
+    <keybind key="W-Next"><action name="GoToDesktop" to="right" wrap="no"/></keybind>
+    <keybind key="W-Prior"><action name="GoToDesktop" to="left" wrap="no"/></keybind>
+    <keybind key="W-u"><action name="GoToDesktop" to="right" wrap="no"/></keybind>
+    <keybind key="W-i"><action name="GoToDesktop" to="left" wrap="no"/></keybind>
+    <keybind key="W-C-Next"><action name="SendToDesktop" to="right" wrap="no"/></keybind>
+    <keybind key="W-C-Prior"><action name="SendToDesktop" to="left" wrap="no"/></keybind>
+    <keybind key="W-C-u"><action name="SendToDesktop" to="right" wrap="no"/></keybind>
+    <keybind key="W-C-i"><action name="SendToDesktop" to="left" wrap="no"/></keybind>
+    <keybind key="W-1"><action name="GoToDesktop" to="1"/></keybind>
+    <keybind key="W-2"><action name="GoToDesktop" to="2"/></keybind>
+    <keybind key="W-3"><action name="GoToDesktop" to="3"/></keybind>
+    <keybind key="W-4"><action name="GoToDesktop" to="4"/></keybind>
+    <keybind key="W-5"><action name="GoToDesktop" to="5"/></keybind>
+    <keybind key="W-6"><action name="GoToDesktop" to="6"/></keybind>
+    <keybind key="W-7"><action name="GoToDesktop" to="7"/></keybind>
+    <keybind key="W-8"><action name="GoToDesktop" to="8"/></keybind>
+    <keybind key="W-9"><action name="GoToDesktop" to="9"/></keybind>
+    <keybind key="W-C-1"><action name="SendToDesktop" to="1"/></keybind>
+    <keybind key="W-C-2"><action name="SendToDesktop" to="2"/></keybind>
+    <keybind key="W-C-3"><action name="SendToDesktop" to="3"/></keybind>
+    <keybind key="W-C-4"><action name="SendToDesktop" to="4"/></keybind>
+    <keybind key="W-C-5"><action name="SendToDesktop" to="5"/></keybind>
+    <keybind key="W-C-6"><action name="SendToDesktop" to="6"/></keybind>
+    <keybind key="W-C-7"><action name="SendToDesktop" to="7"/></keybind>
+    <keybind key="W-C-8"><action name="SendToDesktop" to="8"/></keybind>
+    <keybind key="W-C-9"><action name="SendToDesktop" to="9"/></keybind>
+
+    <!-- Screenshots (Noctalia) -->
+    <keybind key="Print"><action name="Execute"><command>noctalia msg screenshot-region</command></action></keybind>
+    <keybind key="C-Print"><action name="Execute"><command>noctalia msg screenshot-fullscreen</command></action></keybind>
+    <keybind key="A-Print"><action name="Execute"><command>noctalia msg screenshot-annotate</command></action></keybind>
+
+    <!-- Session -->
+    <keybind key="W-S-p"><action name="Execute"><command>noctalia msg dpms-off</command></action></keybind>
+    <keybind key="W-S-e"><action name="Exit"/></keybind>
+    <keybind key="C-A-Delete"><action name="Exit"/></keybind>
   </keyboard>
 </labwc_config>
